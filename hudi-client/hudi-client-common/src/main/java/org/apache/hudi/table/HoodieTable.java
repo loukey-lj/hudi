@@ -127,6 +127,9 @@ public abstract class HoodieTable<T extends HoodieRecordPayload, I, K, O> implem
   private transient FileSystemViewManager viewManager;
   protected final transient HoodieEngineContext context;
 
+  private Option<HoodieTableMetadataWriter> hoodieTableMetadataWriterOption;
+
+
   protected HoodieTable(HoodieWriteConfig config, HoodieEngineContext context, HoodieTableMetaClient metaClient) {
     this.config = config;
     this.hadoopConfiguration = context.getHadoopConf();
@@ -935,5 +938,12 @@ public abstract class HoodieTable<T extends HoodieRecordPayload, I, K, O> implem
 
   public Runnable getPreExecuteRunnable() {
     return Functions.noop();
+  }
+
+  public  Option<HoodieTableMetadataWriter> getMetadataWriterAndPresent(String triggeringInstantTimestamp){
+    if(!hoodieTableMetadataWriterOption.isPresent()){
+      hoodieTableMetadataWriterOption = getMetadataWriter(triggeringInstantTimestamp, Option.empty());
+    }
+    return  hoodieTableMetadataWriterOption;
   }
 }

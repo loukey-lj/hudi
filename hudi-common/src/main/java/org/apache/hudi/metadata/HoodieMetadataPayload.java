@@ -28,26 +28,9 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hudi.avro.model.BooleanWrapper;
-import org.apache.hudi.avro.model.BytesWrapper;
-import org.apache.hudi.avro.model.DateWrapper;
-import org.apache.hudi.avro.model.DecimalWrapper;
-import org.apache.hudi.avro.model.DoubleWrapper;
-import org.apache.hudi.avro.model.FloatWrapper;
-import org.apache.hudi.avro.model.HoodieMetadataBloomFilter;
-import org.apache.hudi.avro.model.HoodieMetadataColumnStats;
-import org.apache.hudi.avro.model.HoodieMetadataFileInfo;
-import org.apache.hudi.avro.model.HoodieMetadataRecord;
-import org.apache.hudi.avro.model.IntWrapper;
-import org.apache.hudi.avro.model.LongWrapper;
-import org.apache.hudi.avro.model.StringWrapper;
-import org.apache.hudi.avro.model.TimestampMicrosWrapper;
+import org.apache.hudi.avro.model.*;
 import org.apache.hudi.common.fs.FSUtils;
-import org.apache.hudi.common.model.HoodieAvroRecord;
-import org.apache.hudi.common.model.HoodieColumnRangeMetadata;
-import org.apache.hudi.common.model.HoodieKey;
-import org.apache.hudi.common.model.HoodieRecord;
-import org.apache.hudi.common.model.HoodieRecordPayload;
+import org.apache.hudi.common.model.*;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.hash.ColumnIndexID;
 import org.apache.hudi.common.util.hash.FileIndexID;
@@ -75,6 +58,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static org.apache.hudi.common.table.timeline.HoodieTimeline.LESSER_THAN;
+import static org.apache.hudi.common.table.timeline.HoodieTimeline.compareTimestamps;
 import static org.apache.hudi.common.util.DateTimeUtils.instantToMicros;
 import static org.apache.hudi.common.util.DateTimeUtils.microsToInstant;
 import static org.apache.hudi.common.util.TypeUtils.unsafeCast;
@@ -116,6 +101,7 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
   protected static final int METADATA_TYPE_FILE_LIST = 2;
   protected static final int METADATA_TYPE_COLUMN_STATS = 3;
   protected static final int METADATA_TYPE_BLOOM_FILTER = 4;
+  protected static final int METADATA_TYPE_RECORD_INDEX = 5;
 
   // HoodieMetadata schema field ids
   public static final String KEY_FIELD_NAME = HoodieHFileReader.KEY_FIELD_NAME;
@@ -123,6 +109,7 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
   public static final String SCHEMA_FIELD_NAME_METADATA = "filesystemMetadata";
   public static final String SCHEMA_FIELD_ID_COLUMN_STATS = "ColumnStatsMetadata";
   public static final String SCHEMA_FIELD_ID_BLOOM_FILTER = "BloomFilterMetadata";
+  public static final String SCHEMA_FIELD_ID_RECORD_INDEX =  "recordLevelIndexMetadata";
 
   // HoodieMetadata bloom filter payload field ids
   private static final String FIELD_IS_DELETED = "isDeleted";
@@ -141,6 +128,13 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
   public static final String COLUMN_STATS_FIELD_COLUMN_NAME = "columnName";
   public static final String COLUMN_STATS_FIELD_TOTAL_UNCOMPRESSED_SIZE = "totalUncompressedSize";
   public static final String COLUMN_STATS_FIELD_IS_DELETED = FIELD_IS_DELETED;
+
+  //HoodieMetadata record index payload field ids
+  private static final String RECODE_INDEX_FIELD_PARTITION = "partition";
+  private static final String RECODE_INDEX_FIELD_FILEID = "fileId";
+  private static final String RECODE_INDEX_FIELD_ROW_GROUP_INDEX = "rowGroupIndex";
+  private static final String RECODE_INDEX_FIELD_IS_DELETED = FIELD_IS_DELETED;
+  private static final String RECODE_INDEX_FIELD_COMMIT_TIME = "commitTime";
 
   private static final Conversions.DecimalConversion AVRO_DECIMAL_CONVERSION = new Conversions.DecimalConversion();
 
@@ -174,6 +168,8 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
   private Map<String, HoodieMetadataFileInfo> filesystemMetadata = null;
   private HoodieMetadataBloomFilter bloomFilterMetadata = null;
   private HoodieMetadataColumnStats columnStatMetadata = null;
+
+  private HoodieMetadataRecordLevelIndex recordLevelIndexMetadata = null;
 
   public HoodieMetadataPayload(GenericRecord record, Comparable<?> orderingVal) {
     this(Option.of(record));
@@ -240,30 +236,45 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
           .build();
         }
       }
+      if (type == METADATA_TYPE_RECORD_INDEX){
+        GenericRecord recordLevelIndexMetadata = getNestedFieldValue(record, SCHEMA_FIELD_ID_RECORD_INDEX);
+        recordLevelIndexMetadata = new HoodieMetadataRecordLevelIndex(
+                (String) recordLevelIndexMetadata.get(RECODE_INDEX_FIELD_PARTITION),
+                (String) recordLevelIndexMetadata.get(RECODE_INDEX_FIELD_FILEID),
+                (Integer) recordLevelIndexMetadata.get(RECODE_INDEX_FIELD_ROW_GROUP_INDEX),
+                (Boolean) recordLevelIndexMetadata.get(RECODE_INDEX_FIELD_IS_DELETED),
+                (String) recordLevelIndexMetadata.get(RECODE_INDEX_FIELD_COMMIT_TIME));
+      }
     }
   }
 
   private HoodieMetadataPayload(String key, int type, Map<String, HoodieMetadataFileInfo> filesystemMetadata) {
-    this(key, type, filesystemMetadata, null, null);
+    this(key, type, filesystemMetadata, null, null, null);
   }
 
   private HoodieMetadataPayload(String key, HoodieMetadataBloomFilter metadataBloomFilter) {
-    this(key, METADATA_TYPE_BLOOM_FILTER, null, metadataBloomFilter, null);
+    this(key, METADATA_TYPE_BLOOM_FILTER, null, metadataBloomFilter, null, null);
   }
 
   private HoodieMetadataPayload(String key, HoodieMetadataColumnStats columnStats) {
-    this(key, METADATA_TYPE_COLUMN_STATS, null, null, columnStats);
+    this(key, METADATA_TYPE_COLUMN_STATS, null, null, columnStats, null);
+  }
+
+  private HoodieMetadataPayload(String key, HoodieMetadataRecordLevelIndex recordLevelIndexMetadata) {
+    this(key, METADATA_TYPE_RECORD_INDEX, null, null, null, recordLevelIndexMetadata);
   }
 
   protected HoodieMetadataPayload(String key, int type,
                                   Map<String, HoodieMetadataFileInfo> filesystemMetadata,
                                   HoodieMetadataBloomFilter metadataBloomFilter,
-                                  HoodieMetadataColumnStats columnStats) {
+                                  HoodieMetadataColumnStats columnStats,
+                                  HoodieMetadataRecordLevelIndex recordLevelIndexMetadata) {
     this.key = key;
     this.type = type;
     this.filesystemMetadata = filesystemMetadata;
     this.bloomFilterMetadata = metadataBloomFilter;
     this.columnStatMetadata = columnStats;
+    this.recordLevelIndexMetadata = recordLevelIndexMetadata;
   }
 
   /**
@@ -369,6 +380,50 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
     return new HoodieAvroRecord<>(key, metadataPayload);
   }
 
+  public static Stream<HoodieRecord> createColumnStatsRecords(String partitionName,
+                                                              Collection<HoodieColumnRangeMetadata<Comparable>> columnRangeMetadataList,
+                                                              boolean isDeleted) {
+    return columnRangeMetadataList.stream().map(columnRangeMetadata -> {
+      HoodieKey key = new HoodieKey(getColumnStatsIndexKey(partitionName, columnRangeMetadata),
+              MetadataPartitionType.COLUMN_STATS.getPartitionPath());
+
+      HoodieMetadataPayload payload = new HoodieMetadataPayload(key.getRecordKey(),
+              HoodieMetadataColumnStats.newBuilder()
+                      .setFileName(new Path(columnRangeMetadata.getFilePath()).getName())
+                      .setColumnName(columnRangeMetadata.getColumnName())
+                      .setMinValue(wrapStatisticValue(columnRangeMetadata.getMinValue()))
+                      .setMaxValue(wrapStatisticValue(columnRangeMetadata.getMaxValue()))
+                      .setNullCount(columnRangeMetadata.getNullCount())
+                      .setValueCount(columnRangeMetadata.getValueCount())
+                      .setTotalSize(columnRangeMetadata.getTotalSize())
+                      .setTotalUncompressedSize(columnRangeMetadata.getTotalUncompressedSize())
+                      .setIsDeleted(isDeleted)
+                      .build());
+
+      return new HoodieAvroRecord<>(key, payload);
+    });
+  }
+
+
+  public static HoodieRecord<HoodieMetadataPayload> createRecordLevelMetadataRecord(final String partitionName,
+                                                                                    final String baseFileName,
+                                                                                    final String timestamp,
+                                                                                    final String bloomFilterType,
+                                                                                    final ByteBuffer bloomFilter,
+                                                                                    final boolean isDeleted) {
+    checkArgument(!baseFileName.contains(Path.SEPARATOR)
+                    && FSUtils.isBaseFile(new Path(baseFileName)),
+            "Invalid base file '" + baseFileName + "' for MetaRecordLevleIndex!");
+    final String bloomFilterIndexKey = new PartitionIndexID(partitionName).asBase64EncodedString()
+            .concat(new FileIndexID(baseFileName).asBase64EncodedString());
+    HoodieKey key = new HoodieKey(bloomFilterIndexKey, MetadataPartitionType.BLOOM_FILTERS.getPartitionPath());
+
+    HoodieMetadataBloomFilter metadataBloomFilter =
+            new HoodieMetadataBloomFilter(bloomFilterType, timestamp, bloomFilter, isDeleted);
+    HoodieMetadataPayload metadataPayload = new HoodieMetadataPayload(key.getRecordKey(), metadataBloomFilter);
+    return new HoodieAvroRecord<>(key, metadataPayload);
+  }
+
   @Override
   public HoodieMetadataPayload preCombine(HoodieMetadataPayload previousRecord) {
     checkArgument(previousRecord.type == type,
@@ -384,6 +439,8 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
         return new HoodieMetadataPayload(key, combineBloomFilterMetadata);
       case METADATA_TYPE_COLUMN_STATS:
         return new HoodieMetadataPayload(key, combineColumnStatsMetadata(previousRecord));
+      case  METADATA_TYPE_RECORD_INDEX:
+        return new HoodieMetadataPayload(key, combineRecordLevelIndexMetadata(previousRecord));
       default:
         throw new HoodieMetadataException("Unknown type of HoodieMetadataPayload: " + type);
     }
@@ -402,6 +459,47 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
     HoodieMetadataColumnStats newColumnStatsRecord = getColumnStatMetadata().get();
 
     return mergeColumnStatsRecords(previousColStatsRecord, newColumnStatsRecord);
+  }
+
+  private HoodieMetadataRecordLevelIndex combineRecordLevelIndexMetadata(HoodieMetadataPayload previousRecord) {
+    final HoodieMetadataRecordLevelIndex recordLevelIndexMetadataPre = previousRecord.getRecordLevelIndexMetadata().get();
+    final HoodieMetadataRecordLevelIndex recordLevelIndexMetadataThis = this.getRecordLevelIndexMetadata().get();
+    if(recordLevelIndexMetadataPre.getIsDeleted()){
+      return recordLevelIndexMetadataThis;
+    }
+
+    if(recordLevelIndexMetadataThis.getIsDeleted()){
+      return recordLevelIndexMetadataPre;
+    }
+
+    return compareTimestamps(recordLevelIndexMetadataPre.getCommitTime(), LESSER_THAN, recordLevelIndexMetadataThis.getCommitTime()) ? recordLevelIndexMetadataThis : recordLevelIndexMetadataPre;
+  }
+
+  /**
+   * If this is a record-level index entry, returns the file to which this is mapped.
+   */
+  public HoodieRecordGlobalLocation getGlobalRecordLocation() {
+    // final String fileId = String.format("%d-%d", recordLevelIndexMetadata.getFileId(), recordLevelIndexMetadata.getRowGroupIndex());
+    // final Date instantDate = new Date(((long)recordIndexInfo.getInstantTime()) * 1000);
+
+    return new HoodieRecordGlobalLocation(recordLevelIndexMetadata.getPartition(), recordLevelIndexMetadata.getCommitTime(), recordLevelIndexMetadata.getFileId());
+  }
+
+  /**
+   * Create and return a {@code HoodieMetadataPayload} to save an entry for the record level index.
+   *
+   * Each entry maps the key of a single record in HUDI to its location.
+   *
+   * @param recordKey Key of the record
+   * @param partition Name of the partition which contains the record
+   * @param fileId fileId which contains the record
+   */
+  public static HoodieRecord<HoodieMetadataPayload> createRecordLevelIndexRecord(String recordKey, String partition,
+                                                                                 String fileId, Integer rowGroupIndex,
+                                                                                 boolean isDelete, String commitTime) {
+    HoodieKey key = new HoodieKey(recordKey, MetadataPartitionType.RECORD_LEVEL_INDEX.getPartitionPath());
+    HoodieMetadataPayload payload = new HoodieMetadataPayload(recordKey, new HoodieMetadataRecordLevelIndex(partition, fileId, rowGroupIndex, isDelete, commitTime));
+    return new HoodieAvroRecord<>(key, payload);
   }
 
   @Override
@@ -423,7 +521,7 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
     }
 
     HoodieMetadataRecord record = new HoodieMetadataRecord(key, type, filesystemMetadata, bloomFilterMetadata,
-        columnStatMetadata);
+        columnStatMetadata, recordLevelIndexMetadata);
     return Option.of(record);
   }
 
@@ -466,6 +564,17 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
     }
 
     return Option.of(columnStatMetadata);
+  }
+
+  /**
+   * Get the record level index metadata from this payload.
+   */
+  public Option<HoodieMetadataRecordLevelIndex> getRecordLevelIndexMetadata() {
+    if (recordLevelIndexMetadata == null) {
+      return Option.empty();
+    }
+
+    return Option.of(recordLevelIndexMetadata);
   }
 
   /**
@@ -581,29 +690,7 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
     return getColumnStatsIndexKey(partitionIndexID, fileIndexID, columnIndexID);
   }
 
-  public static Stream<HoodieRecord> createColumnStatsRecords(String partitionName,
-                                                              Collection<HoodieColumnRangeMetadata<Comparable>> columnRangeMetadataList,
-                                                              boolean isDeleted) {
-    return columnRangeMetadataList.stream().map(columnRangeMetadata -> {
-      HoodieKey key = new HoodieKey(getColumnStatsIndexKey(partitionName, columnRangeMetadata),
-          MetadataPartitionType.COLUMN_STATS.getPartitionPath());
 
-      HoodieMetadataPayload payload = new HoodieMetadataPayload(key.getRecordKey(),
-          HoodieMetadataColumnStats.newBuilder()
-              .setFileName(new Path(columnRangeMetadata.getFilePath()).getName())
-              .setColumnName(columnRangeMetadata.getColumnName())
-              .setMinValue(wrapStatisticValue(columnRangeMetadata.getMinValue()))
-              .setMaxValue(wrapStatisticValue(columnRangeMetadata.getMaxValue()))
-              .setNullCount(columnRangeMetadata.getNullCount())
-              .setValueCount(columnRangeMetadata.getValueCount())
-              .setTotalSize(columnRangeMetadata.getTotalSize())
-              .setTotalUncompressedSize(columnRangeMetadata.getTotalUncompressedSize())
-              .setIsDeleted(isDeleted)
-              .build());
-
-      return new HoodieAvroRecord<>(key, payload);
-    });
-  }
 
   @SuppressWarnings({"rawtypes", "unchecked"})
   private static HoodieMetadataColumnStats mergeColumnStatsRecords(HoodieMetadataColumnStats prevColumnStats,

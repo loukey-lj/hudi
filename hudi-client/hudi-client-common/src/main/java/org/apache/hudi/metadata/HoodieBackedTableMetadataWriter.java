@@ -206,6 +206,9 @@ public abstract class HoodieBackedTableMetadataWriter implements HoodieTableMeta
     if (metadataConfig.isColumnStatsIndexEnabled()) {
       enablePartition(MetadataPartitionType.COLUMN_STATS, metadataConfig, metaClient, fsView, isBootstrapCompleted);
     }
+    if (metadataConfig.isRecordLevelIndexEnabled()) {
+      enablePartition(MetadataPartitionType.RECORD_LEVEL_INDEX, metadataConfig, metaClient, fsView, isBootstrapCompleted);
+    }
   }
 
   /**
@@ -778,7 +781,8 @@ public abstract class HoodieBackedTableMetadataWriter implements HoodieTableMeta
         dataWriteConfig.isMetadataColumnStatsIndexEnabled(),
         dataWriteConfig.getColumnStatsIndexParallelism(),
         dataWriteConfig.getColumnsEnabledForColumnStatsIndex(),
-        dataWriteConfig.getColumnsEnabledForBloomFilterIndex());
+        dataWriteConfig.getColumnsEnabledForBloomFilterIndex(),
+        dataWriteConfig.getRecordLevelIndexParallelism());
   }
 
   /**
@@ -1092,6 +1096,12 @@ public abstract class HoodieBackedTableMetadataWriter implements HoodieTableMeta
       partitionToRecordsMap.put(MetadataPartitionType.COLUMN_STATS, recordsRDD);
     }
 
+    if (partitionTypes.contains(MetadataPartitionType.RECORD_LEVEL_INDEX) && totalDataFilesCount > 0) {
+      final HoodieData<HoodieRecord> recordsRDD = HoodieTableMetadataUtil.convertFilesToRecordLevelIndex(
+              engineContext, Collections.emptyMap(), partitionToFilesMap, getRecordsGenerationParams(), createInstantTime, dataWriteConfig.getBasePath());
+      partitionToRecordsMap.put(MetadataPartitionType.RECORD_LEVEL_INDEX, recordsRDD);
+    }
+
     LOG.info("Committing " + partitions.size() + " partitions and " + totalDataFilesCount + " files to metadata");
 
     commit(createInstantTime, partitionToRecordsMap, false);
@@ -1178,5 +1188,9 @@ public abstract class HoodieBackedTableMetadataWriter implements HoodieTableMeta
     Map<String, Long> getFileNameToSizeMap() {
       return filenameToSizeMap;
     }
+  }
+
+  public void update(MetadataPartitionType metadataPartitionType, HoodieData<HoodieRecord> hoodieData){
+
   }
 }

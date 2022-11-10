@@ -105,6 +105,8 @@ public class TestHoodieIndex extends TestHoodieMetadataBase {
         {IndexType.GLOBAL_SIMPLE, false, false},
         {IndexType.BUCKET, false, true},
         {IndexType.BUCKET, false, false}
+            // {IndexType.RECORD_LEVEL, false, true},
+            // {IndexType.RECORD_LEVEL, false, false}
     };
     return Stream.of(data).map(Arguments::of);
   }
@@ -140,6 +142,7 @@ public class TestHoodieIndex extends TestHoodieMetadataBase {
         .withAutoCommit(false)
         .withMetadataConfig(HoodieMetadataConfig.newBuilder()
             .withMetadataIndexBloomFilter(enableMetadataIndex)
+            .withMetadataIndexRecordLevelIndex(indexType == IndexType.RECORD_LEVEL)
             .withMetadataIndexColumnStats(enableMetadataIndex)
             .build())
         .withLayoutConfig(HoodieLayoutConfig.newBuilder().fromProperties(indexBuilder.build().getProps())
@@ -369,10 +372,12 @@ public class TestHoodieIndex extends TestHoodieMetadataBase {
     // IndexType, populateMetaFields, enableMetadataIndex
     Object[][] data = new Object[][] {
         // TODO (codope): Enabling metadata index is flaky. Both bloom_filter and col_stats get generated but loading column ranges from the index is failing.
-        // {IndexType.BLOOM, true, true},
+        {IndexType.BLOOM, true, true},
         {IndexType.BLOOM, true, false},
         {IndexType.SIMPLE, true, true},
         {IndexType.SIMPLE, true, false}
+            // {IndexType.RECORD_LEVEL, false, true},
+            // {IndexType.RECORD_LEVEL, false, false}
     };
     return Stream.of(data).map(Arguments::of);
   }

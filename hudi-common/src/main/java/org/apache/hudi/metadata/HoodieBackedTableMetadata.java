@@ -20,6 +20,7 @@ package org.apache.hudi.metadata;
 
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.hadoop.fs.Path;
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.avro.model.HoodieMetadataRecord;
@@ -74,9 +75,7 @@ import java.util.stream.Collectors;
 import static org.apache.hudi.common.util.CollectionUtils.isNullOrEmpty;
 import static org.apache.hudi.common.util.CollectionUtils.toStream;
 import static org.apache.hudi.common.util.ValidationUtils.checkArgument;
-import static org.apache.hudi.metadata.HoodieTableMetadataUtil.PARTITION_NAME_BLOOM_FILTERS;
-import static org.apache.hudi.metadata.HoodieTableMetadataUtil.PARTITION_NAME_COLUMN_STATS;
-import static org.apache.hudi.metadata.HoodieTableMetadataUtil.PARTITION_NAME_FILES;
+import static org.apache.hudi.metadata.HoodieTableMetadataUtil.*;
 
 /**
  * Table metadata provided by an internal DFS backed Hudi metadata table.
@@ -122,6 +121,7 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
         this.metadataTableConfig = metadataMetaClient.getTableConfig();
         this.isBloomFilterIndexEnabled = metadataConfig.isBloomFilterIndexEnabled();
         this.isColumnStatsIndexEnabled = metadataConfig.isColumnStatsIndexEnabled();
+        this.isRecordLevelIndexEnabled = metadataConfig.isRecordLevelIndexEnabled();
       } catch (TableNotFoundException e) {
         LOG.warn("Metadata table was not found at path " + metadataBasePath);
         this.isMetadataTableEnabled = false;
@@ -199,7 +199,8 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
 
   @Override
   public List<Pair<String, Option<HoodieRecord<HoodieMetadataPayload>>>> getRecordsByKeys(List<String> keys,
-                                                                                          String partitionName) {
+                                                                                          String partitionName,
+                                                                                          boolean shouldPreCombine) {
     // Sort the columns so that keys are looked up in order
     List<String> sortedKeys = new ArrayList<>(keys);
     Collections.sort(sortedKeys);
@@ -220,6 +221,9 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
         boolean fullKeys = true;
         Map<String, Option<HoodieRecord<HoodieMetadataPayload>>> logRecords =
             readLogRecords(logRecordScanner, fileSliceKeys, fullKeys, timings);
+        if(!shouldPreCombine){
+          fileSliceKeys.removeIf(k -> logRecords.get(k).isPresent());
+        }
 
         result.addAll(readFromBaseAndMergeWithLogRecords(baseFileReader, fileSliceKeys, fullKeys, logRecords,
             timings, partitionName));
@@ -287,7 +291,7 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
     HoodieTimer timer = new HoodieTimer().startTimer();
     timer.startTimer();
 
-    if (baseFileReader == null) {
+    if (baseFileReader == null || CollectionUtils.isEmpty(keys)) {
       // No base file at all
       timings.add(timer.endTimer());
       if (fullKeys) {
@@ -303,7 +307,6 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
       }
     }
 
-    List<Pair<String, Option<HoodieRecord<HoodieMetadataPayload>>>> result = new ArrayList<>();
 
     HoodieTimer readTimer = new HoodieTimer();
     readTimer.startTimer();
@@ -523,6 +526,7 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
 
       case PARTITION_NAME_COLUMN_STATS:
       case PARTITION_NAME_BLOOM_FILTERS:
+      case PARTITION_NAME_RECORD_LEVEL_INDEX:
       default:
         return false;
     }

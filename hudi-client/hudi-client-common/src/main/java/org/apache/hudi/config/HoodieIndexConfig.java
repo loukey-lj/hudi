@@ -44,13 +44,7 @@ import static org.apache.hudi.config.HoodieHBaseIndexConfig.PUT_BATCH_SIZE;
 import static org.apache.hudi.config.HoodieHBaseIndexConfig.TABLENAME;
 import static org.apache.hudi.config.HoodieHBaseIndexConfig.ZKPORT;
 import static org.apache.hudi.config.HoodieHBaseIndexConfig.ZKQUORUM;
-import static org.apache.hudi.index.HoodieIndex.IndexType.BLOOM;
-import static org.apache.hudi.index.HoodieIndex.IndexType.BUCKET;
-import static org.apache.hudi.index.HoodieIndex.IndexType.GLOBAL_BLOOM;
-import static org.apache.hudi.index.HoodieIndex.IndexType.GLOBAL_SIMPLE;
-import static org.apache.hudi.index.HoodieIndex.IndexType.HBASE;
-import static org.apache.hudi.index.HoodieIndex.IndexType.INMEMORY;
-import static org.apache.hudi.index.HoodieIndex.IndexType.SIMPLE;
+import static org.apache.hudi.index.HoodieIndex.IndexType.*;
 
 /**
  * Indexing related config.
@@ -67,9 +61,9 @@ public class HoodieIndexConfig extends HoodieConfig {
       // Builder#getDefaultIndexType has already set it according to engine type
       .noDefaultValue()
       .withValidValues(HBASE.name(), INMEMORY.name(), BLOOM.name(), GLOBAL_BLOOM.name(),
-          SIMPLE.name(), GLOBAL_SIMPLE.name(), BUCKET.name())
+          SIMPLE.name(), GLOBAL_SIMPLE.name(), BUCKET.name(), RECORD_LEVEL.name())
       .withDocumentation("Type of index to use. Default is Bloom filter. "
-          + "Possible options are [BLOOM | GLOBAL_BLOOM |SIMPLE | GLOBAL_SIMPLE | INMEMORY | HBASE | BUCKET]. "
+          + "Possible options are [BLOOM | GLOBAL_BLOOM |SIMPLE | GLOBAL_SIMPLE | INMEMORY | HBASE | BUCKET | RECORD_LEVEL]. "
           + "Bloom filters removes the dependency on a external system "
           + "and is stored in the footer of the Parquet Data Files");
 

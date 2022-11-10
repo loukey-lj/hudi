@@ -224,6 +224,10 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
     LOG.info("Committing " + instantTime + " action " + commitActionType);
     // Create a Hoodie table which encapsulated the commits and files visible
     HoodieTable table = createTable(config, hadoopConf);
+    return doCommit(instantTime, stats, extraMetadata, commitActionType, partitionToReplaceFileIds, table);
+  }
+
+  private boolean doCommit(String instantTime, List<HoodieWriteStat> stats, Option<Map<String, String>> extraMetadata, String commitActionType, Map<String, List<String>> partitionToReplaceFileIds, HoodieTable table) {
     HoodieCommitMetadata metadata = CommitUtils.buildMetadata(stats, partitionToReplaceFileIds,
         extraMetadata, operationType, config.getWriteSchema(), commitActionType);
     HoodieInstant inflightInstant = new HoodieInstant(State.INFLIGHT, table.getMetaClient().getCommitActionType(), instantTime);
@@ -254,6 +258,18 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
     }
     return true;
   }
+
+  public boolean commitStats(String instantTime, List<HoodieWriteStat> stats, Option<Map<String, String>> extraMetadata,
+                             String commitActionType, Map<String, List<String>> partitionToReplaceFileIds, HoodieTable table) {
+    // Skip the empty commit if not allowed
+    if (!config.allowEmptyCommit() && stats.isEmpty()) {
+      return true;
+    }
+    LOG.info("Committing " + instantTime + " action " + commitActionType);
+    // Create a Hoodie table which encapsulated the commits and files visible
+    return doCommit(instantTime, stats, extraMetadata, commitActionType, partitionToReplaceFileIds, table);
+  }
+
 
   protected void commit(HoodieTable table, String commitActionType, String instantTime, HoodieCommitMetadata metadata,
                       List<HoodieWriteStat> stats) throws IOException {
@@ -1452,6 +1468,7 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
     this.txnManager.beginTransaction(ownerInstant, Option.empty());
     try {
       tryUpgrade(metaClient, instantTime);
+      //initialMetadataTableIfNecessary == config.isMetadataTableEnabled()
       table = doInitTable(metaClient, instantTime, initialMetadataTableIfNecessary);
     } finally {
       this.txnManager.endTransaction(ownerInstant);

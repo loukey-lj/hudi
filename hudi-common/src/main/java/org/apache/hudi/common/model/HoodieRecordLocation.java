@@ -29,12 +29,25 @@ public class HoodieRecordLocation implements Serializable {
   protected String instantTime;
   protected String fileId;
 
+  /**
+   * the index of key in parquet rowGroup num.
+   */
+  protected Integer rowGroupId;
+
   public HoodieRecordLocation() {
   }
 
   public HoodieRecordLocation(String instantTime, String fileId) {
     this.instantTime = instantTime;
     this.fileId = fileId;
+  }
+
+  public Integer getRowGroupId() {
+    return rowGroupId;
+  }
+
+  public void setRowGroupId(Integer rowGroupId) {
+    this.rowGroupId = rowGroupId;
   }
 
   @Override

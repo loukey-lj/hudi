@@ -78,6 +78,7 @@ public abstract class BaseTableMetadata implements HoodieTableMetadata {
   protected boolean isMetadataTableEnabled;
   protected boolean isBloomFilterIndexEnabled = false;
   protected boolean isColumnStatsIndexEnabled = false;
+  protected boolean isRecordLevelIndexEnabled = false;
 
   protected BaseTableMetadata(HoodieEngineContext engineContext, HoodieMetadataConfig metadataConfig,
                               String dataBasePath, String spillableMapDirectory) {
@@ -378,7 +379,11 @@ public abstract class BaseTableMetadata implements HoodieTableMetadata {
 
   protected abstract Option<HoodieRecord<HoodieMetadataPayload>> getRecordByKey(String key, String partitionName);
 
-  public abstract List<Pair<String, Option<HoodieRecord<HoodieMetadataPayload>>>> getRecordsByKeys(List<String> key, String partitionName);
+  public List<Pair<String, Option<HoodieRecord<HoodieMetadataPayload>>>> getRecordsByKeys(List<String> key, String partitionName){
+    return getRecordsByKeys(key, partitionName, true);
+  }
+
+  public abstract List<Pair<String, Option<HoodieRecord<HoodieMetadataPayload>>>> getRecordsByKeys(List<String> key, String partitionName, boolean shouldPreCombine);
 
   protected HoodieEngineContext getEngineContext() {
     return engineContext != null ? engineContext : new HoodieLocalEngineContext(hadoopConf.get());
