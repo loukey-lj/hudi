@@ -199,8 +199,7 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
 
   @Override
   public List<Pair<String, Option<HoodieRecord<HoodieMetadataPayload>>>> getRecordsByKeys(List<String> keys,
-                                                                                          String partitionName,
-                                                                                          boolean shouldPreCombine) {
+                                                                                          String partitionName) {
     // Sort the columns so that keys are looked up in order
     List<String> sortedKeys = new ArrayList<>(keys);
     Collections.sort(sortedKeys);
@@ -221,9 +220,6 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
         boolean fullKeys = true;
         Map<String, Option<HoodieRecord<HoodieMetadataPayload>>> logRecords =
             readLogRecords(logRecordScanner, fileSliceKeys, fullKeys, timings);
-        if(!shouldPreCombine){
-          fileSliceKeys.removeIf(k -> logRecords.get(k).isPresent());
-        }
 
         result.addAll(readFromBaseAndMergeWithLogRecords(baseFileReader, fileSliceKeys, fullKeys, logRecords,
             timings, partitionName));

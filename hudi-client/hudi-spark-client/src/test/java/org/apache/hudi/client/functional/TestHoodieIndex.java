@@ -92,21 +92,21 @@ public class TestHoodieIndex extends TestHoodieMetadataBase {
   private static Stream<Arguments> indexTypeParams() {
     // IndexType, populateMetaFields, enableMetadataIndex
     Object[][] data = new Object[][] {
-        {IndexType.BLOOM, true, true},
-        {IndexType.BLOOM, true, false},
-        {IndexType.GLOBAL_BLOOM, true, true},
-        {IndexType.GLOBAL_BLOOM, true, false},
-        {IndexType.SIMPLE, true, true},
-        {IndexType.SIMPLE, true, false},
-        {IndexType.SIMPLE, false, true},
-        {IndexType.SIMPLE, false, false},
-        {IndexType.GLOBAL_SIMPLE, true, true},
-        {IndexType.GLOBAL_SIMPLE, false, true},
-        {IndexType.GLOBAL_SIMPLE, false, false},
-        {IndexType.BUCKET, false, true},
-        {IndexType.BUCKET, false, false}
-            // {IndexType.RECORD_LEVEL, false, true},
-            // {IndexType.RECORD_LEVEL, false, false}
+//        {IndexType.BLOOM, true, true},
+//        {IndexType.BLOOM, true, false},
+//        {IndexType.GLOBAL_BLOOM, true, true},
+//        {IndexType.GLOBAL_BLOOM, true, false},
+//        {IndexType.SIMPLE, true, true},
+//        {IndexType.SIMPLE, true, false},
+//        {IndexType.SIMPLE, false, true},
+//        {IndexType.SIMPLE, false, false},
+//        {IndexType.GLOBAL_SIMPLE, true, true},
+//        {IndexType.GLOBAL_SIMPLE, false, true},
+//        {IndexType.GLOBAL_SIMPLE, false, false},
+//        {IndexType.BUCKET, false, true},
+//        {IndexType.BUCKET, false, false}
+             {IndexType.RECORD_LEVEL, false, true},
+             {IndexType.RECORD_LEVEL, false, false}
     };
     return Stream.of(data).map(Arguments::of);
   }
@@ -150,6 +150,7 @@ public class TestHoodieIndex extends TestHoodieMetadataBase {
         .build();
     writeClient = getHoodieWriteClient(config);
     this.index = writeClient.getIndex();
+    initWriteConfigAndMetatableWriter(config, config.getMetadataConfig().enabled());
   }
 
   @AfterEach
@@ -376,8 +377,6 @@ public class TestHoodieIndex extends TestHoodieMetadataBase {
         {IndexType.BLOOM, true, false},
         {IndexType.SIMPLE, true, true},
         {IndexType.SIMPLE, true, false}
-            // {IndexType.RECORD_LEVEL, false, true},
-            // {IndexType.RECORD_LEVEL, false, false}
     };
     return Stream.of(data).map(Arguments::of);
   }

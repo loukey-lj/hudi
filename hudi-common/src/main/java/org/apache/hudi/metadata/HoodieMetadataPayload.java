@@ -238,7 +238,7 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
       }
       if (type == METADATA_TYPE_RECORD_INDEX){
         GenericRecord recordLevelIndexMetadata = getNestedFieldValue(record, SCHEMA_FIELD_ID_RECORD_INDEX);
-        recordLevelIndexMetadata = new HoodieMetadataRecordLevelIndex(
+        this.recordLevelIndexMetadata = new HoodieMetadataRecordLevelIndex(
                 (String) recordLevelIndexMetadata.get(RECODE_INDEX_FIELD_PARTITION),
                 (String) recordLevelIndexMetadata.get(RECODE_INDEX_FIELD_FILEID),
                 (Integer) recordLevelIndexMetadata.get(RECODE_INDEX_FIELD_ROW_GROUP_INDEX),

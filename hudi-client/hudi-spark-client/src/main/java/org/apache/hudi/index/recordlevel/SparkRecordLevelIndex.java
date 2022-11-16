@@ -85,83 +85,7 @@ public class SparkRecordLevelIndex extends HoodieIndex<Object, Object> {
      */
     @Override
     public HoodieData<WriteStatus> updateLocation(HoodieData<WriteStatus> writeStatuses, HoodieEngineContext context, HoodieTable hoodieTable) throws HoodieIndexException {
-        // Integer indexTTL = config.tableIndexTTL();
-        // //不是 meta 表或者 liveTime 非法就不清理
-        // if(indexTTL <= 0){
-        //     indexTTL = -1;
-        // }
-        // final Integer liveTime = indexTTL;
-        // JavaRDD<WriteStatus> writeStatusRDD = HoodieJavaRDD.getJavaRDD(writeStatuses);
-        // long[] counts = { 0L, 0L, 0L }; // insert, update, delete
-        // JavaRDD<HoodieRecord> indexUpdateRDD = writeStatusRDD.flatMap(writeStatus -> {
-        //     List<HoodieRecord> records = new LinkedList<>();
-        //     for (HoodieRecord writtenRecord : writeStatus.getWrittenRecords()) {
-        //         if (!writeStatus.isErrored(writtenRecord.getKey())) {
-        //             HoodieRecord indexRecord;
-        //             HoodieKey key = writtenRecord.getKey();
-        //             Option<HoodieRecordLocation> newLocation = writtenRecord.getNewLocation();
-        //
-        //             String partitionPath = key.getPartitionPath();
-        //             //获取分区计算是否过期
-        //             if (liveTime > 0 && partitionPath != null && isColdData(partitionPath, liveTime)) {
-        //                 continue;
-        //             }
-        //
-        //             if (newLocation.isPresent()) {
-        //                 if (writtenRecord.getCurrentLocation() != null) {
-        //                     // Update
-        //                     counts[1] += 1;
-        //                     // TODO: updates are not currently supported but are required for clustering use-case. We should make
-        //                     // sure that if the fileID has changed then we update it.
-        //                     // TODO: How to differentiate dupes here?
-        //                     continue;
-        //                 } else {
-        //                     // Insert
-        //                     counts[0] += 1;
-        //                 }
-        //
-        //
-        //                 HoodieRecordLocation hoodieRecordLocation = newLocation.get();
-        //
-        //                 // Data file names have a -D suffix to denote the index (D = integer) of the file written
-        //                 final String fileId = hoodieRecordLocation.getFileId();
-        //                 final int index = fileId.lastIndexOf("-");
-        //                 int fileIndex = Integer.parseInt(fileId.substring(index + 1));
-        //                 String uuid = fileId.substring(0, index);
-        //                 Option<String> layoutPartitionerClass = hoodieTable.getStorageLayout().layoutPartitionerClass();
-        //
-        //                 //If fileId named whit bucket index style
-        //                 if(layoutPartitionerClass.isPresent() && layoutPartitionerClass.get().equals(SparkBucketIndexPartitioner.class.getName())){
-        //                     uuid = String.valueOf(BucketIdentifier.bucketIdFromFileId(fileId));
-        //                 }
-        //
-        //                 indexRecord = HoodieMetadataPayload.createRecordLevelIndexRecord(key.getRecordKey(), partitionPath,
-        //                         fileId, fileIndex);
-        //             } else {
-        //                 // Delete existing index for a deleted record
-        //                 counts[2] += 1;
-        //                 indexRecord = HoodieMetadataPayload.createRecordLevelIndexDelete(key.getRecordKey());
-        //             }
-        //
-        //             records.add(indexRecord);
-        //         }
-        //     }
-        //     return records.iterator();
-        // });
-        //
-        //
-        // // SparkHoodieBackedTableMetadataWriter metadataWriter = (SparkHoodieBackedTableMetadataWriter) hoodieTable.getMetadataWriter().get();
-        // //     metadataWriter.queueForUpdate(indexUpdateRDD, MetadataPartitionType.PARTITION_NAME_RECORD_LEVEL_INDEX, "");
-        //
-        // // // TODO: Find a better way to enqueue records on the driver side for commit to metadata table
-        // // if (hoodieTable.getMetadata().isPresent()) {
-        // //     SparkHoodieBackedTableMetadataWriter metadataWriter = (SparkHoodieBackedTableMetadataWriter) hoodieTable.getMetadataWriter().get();
-        // //     metadataWriter.queueForUpdate(indexUpdateRDD, MetadataPartitionType.PARTITION_NAME_RECORD_LEVEL_INDEX, "");
-        // // }
-        //
-        // return HoodieJavaRDD.of(writeStatusRDD);
         return writeStatuses;
-
     }
 
     public HoodieData<HoodieRecord> updateLocationToMetadata(JavaRDD<WriteStatus> writeStatusRDD, HoodieTable hoodieTable){
@@ -182,7 +106,7 @@ public class SparkRecordLevelIndex extends HoodieIndex<Object, Object> {
                     final HoodieRecordLocation currentLocation = writtenRecord.getCurrentLocation();
 
                     String partitionPath = key.getPartitionPath();
-                    //获取分区计算是否过期
+                    //ttl
                     if (liveTime > 0 && partitionPath != null && isColdData(partitionPath, liveTime)) {
                         continue;
                     }
@@ -235,7 +159,6 @@ public class SparkRecordLevelIndex extends HoodieIndex<Object, Object> {
             return records.iterator();
         });
         return HoodieJavaRDD.of(indexUpdateRDD);
-
     }
 
     /**
@@ -245,7 +168,7 @@ public class SparkRecordLevelIndex extends HoodieIndex<Object, Object> {
      */
     @Override
     public boolean rollbackCommit(String instantTime) {
-        return false;
+        return true;
     }
 
     /**

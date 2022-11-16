@@ -65,11 +65,11 @@ public class LocationTagFunction<R extends HoodieRecordPayload> implements FlatM
         List<String> lookUpKeys = new ArrayList<>(keyToIndexMap.keySet());
 
         //lookup index with keys
-        final List<Pair<String, Option<HoodieRecord<HoodieMetadataPayload>>>> tagedResults = metaTable.getRecordsByKeys(
+        final List<Pair<String, Option<HoodieRecord<HoodieMetadataPayload>>>> taggedResults = metaTable.getRecordsByKeys(
                 lookUpKeys,
-                MetadataPartitionType.RECORD_LEVEL_INDEX.getPartitionPath(), false);
+                MetadataPartitionType.RECORD_LEVEL_INDEX.getPartitionPath());
 
-        for (Pair<String, Option<HoodieRecord<HoodieMetadataPayload>>> keyAndRecord : tagedResults){
+        for (Pair<String, Option<HoodieRecord<HoodieMetadataPayload>>> keyAndRecord : taggedResults){
 
           Option<HoodieRecord<HoodieMetadataPayload>> indexValue = keyAndRecord.getValue();
 
@@ -79,7 +79,7 @@ public class LocationTagFunction<R extends HoodieRecordPayload> implements FlatM
           }
 
           final Option<HoodieMetadataRecordLevelIndex> recordLevelIndexMetadata = indexValue.get().getData().getRecordLevelIndexMetadata();
-          if(recordLevelIndexMetadata.isPresent()){
+          if(!recordLevelIndexMetadata.isPresent()){
             continue;
           }
 

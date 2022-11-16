@@ -127,7 +127,7 @@ public abstract class HoodieTable<T extends HoodieRecordPayload, I, K, O> implem
   private transient FileSystemViewManager viewManager;
   protected final transient HoodieEngineContext context;
 
-  private Option<HoodieTableMetadataWriter> hoodieTableMetadataWriterOption;
+  private Option<HoodieTableMetadataWriter> hoodieTableMetadataWriterOption = Option.empty();
 
 
   protected HoodieTable(HoodieWriteConfig config, HoodieEngineContext context, HoodieTableMetaClient metaClient) {
