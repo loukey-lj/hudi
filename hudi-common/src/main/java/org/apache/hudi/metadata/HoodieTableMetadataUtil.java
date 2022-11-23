@@ -625,6 +625,18 @@ public class HoodieTableMetadataUtil {
     final HoodieData<HoodieRecord> rollbackRecordsRDD = engineContext.parallelize(filesPartitionRecords, 1);
     partitionToRecordsMap.put(MetadataPartitionType.FILES, rollbackRecordsRDD);
 
+    if(recordsGenerationParams.getEnabledPartitionTypes().contains(MetadataPartitionType.RECORD_LEVEL_INDEX) && !filesPartitionRecords.isEmpty()){
+
+      filesPartitionRecords.stream().map(fm->Pair.of(fm.getRecordKey(),((HoodieMetadataPayload) fm.getData()).getFilesystemMetadata()))
+              .map(x->x.getValue().ifPresent(map-> map.entrySet().stream().map(e -> Pair.of(e.getKey(),Pair.of(e.getKey(),e.getValue().getIsDeleted())))));
+      int parallelism = Math.max(Math.min(filesPartitionRecords.size(), recordsGenerationParams.getRecordLevelIndexParallelism()), 1);
+      engineContext.map(filesPartitionRecords, x->{
+        ((HoodieMetadataPayload) x.getData()).getFilesystemMetadata()
+        return x;
+      }, parallelism);
+    }
+
+
     if (recordsGenerationParams.getEnabledPartitionTypes().contains(MetadataPartitionType.BLOOM_FILTERS)) {
       final HoodieData<HoodieRecord> metadataBloomFilterRecordsRDD =
           convertFilesToBloomFilterRecords(engineContext, partitionToDeletedFiles, partitionToAppendedFiles, recordsGenerationParams, instantTime);
