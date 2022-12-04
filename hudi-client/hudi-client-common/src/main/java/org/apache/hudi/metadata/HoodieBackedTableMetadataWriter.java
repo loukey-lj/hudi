@@ -934,7 +934,7 @@ public abstract class HoodieBackedTableMetadataWriter implements HoodieTableMeta
       Map<MetadataPartitionType, HoodieData<HoodieRecord>> records =
           HoodieTableMetadataUtil.convertMetadataToRecords(engineContext, metadataMetaClient.getActiveTimeline(),
               rollbackMetadata, getRecordsGenerationParams(), instantTime,
-              metadata.getSyncedInstantTime(), wasSynced);
+              metadata.getSyncedInstantTime(), wasSynced, dataWriteConfig.getBasePath());
       commit(instantTime, records, false);
     }
   }

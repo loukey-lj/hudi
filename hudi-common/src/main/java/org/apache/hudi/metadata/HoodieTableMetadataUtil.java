@@ -615,7 +615,7 @@ public class HoodieTableMetadataUtil {
   public static Map<MetadataPartitionType, HoodieData<HoodieRecord>> convertMetadataToRecords(
       HoodieEngineContext engineContext, HoodieActiveTimeline metadataTableTimeline,
       HoodieRollbackMetadata rollbackMetadata, MetadataRecordsGenerationParams recordsGenerationParams,
-      String instantTime, Option<String> lastSyncTs, boolean wasSynced) {
+      String instantTime, Option<String> lastSyncTs, boolean wasSynced, String datasetBasePath) {
     final Map<MetadataPartitionType, HoodieData<HoodieRecord>> partitionToRecordsMap = new HashMap<>();
     Map<String, List<String>> partitionToDeletedFiles = new HashMap<>();
     Map<String, Map<String, Long>> partitionToAppendedFiles = new HashMap<>();
@@ -625,16 +625,22 @@ public class HoodieTableMetadataUtil {
     final HoodieData<HoodieRecord> rollbackRecordsRDD = engineContext.parallelize(filesPartitionRecords, 1);
     partitionToRecordsMap.put(MetadataPartitionType.FILES, rollbackRecordsRDD);
 
-    if(recordsGenerationParams.getEnabledPartitionTypes().contains(MetadataPartitionType.RECORD_LEVEL_INDEX) && !filesPartitionRecords.isEmpty()){
+    // Make rollback index record by rollbackMetadata
+    // if(recordsGenerationParams.getEnabledPartitionTypes().contains(MetadataPartitionType.RECORD_LEVEL_INDEX) && !filesPartitionRecords.isEmpty()){
+      // List<Pair<partition, Pair<fileId, isDelete>>
+    // List<Pair<String, Pair<String, Boolean>>> partitionAndFilesFromRollbackMetadata = filesPartitionRecords.stream().map(fm -> Pair.of(fm.getRecordKey(), ((HoodieMetadataPayload) fm.getData()).getFilesystemMetadata().get()))
+    //           .flatMap(partitionAndFiles -> partitionAndFiles.getValue().entrySet().stream().map(e -> Pair.of(partitionAndFiles.getKey(), Pair.of(e.getKey(), e.getValue().getIsDeleted())))).collect(Collectors.toList());
 
-      filesPartitionRecords.stream().map(fm->Pair.of(fm.getRecordKey(),((HoodieMetadataPayload) fm.getData()).getFilesystemMetadata()))
-              .map(x->x.getValue().ifPresent(map-> map.entrySet().stream().map(e -> Pair.of(e.getKey(),Pair.of(e.getKey(),e.getValue().getIsDeleted())))));
-      int parallelism = Math.max(Math.min(filesPartitionRecords.size(), recordsGenerationParams.getRecordLevelIndexParallelism()), 1);
-      engineContext.map(filesPartitionRecords, x->{
-        ((HoodieMetadataPayload) x.getData()).getFilesystemMetadata()
-        return x;
-      }, parallelism);
-    }
+    //   List<Pair<String, String>> filesToDelete = partitionAndFilesFromRollbackMetadata.stream().filter(x -> x.getValue().getValue()).map(x -> Pair.of(x.getKey(), x.getValue().getKey())).collect(Collectors.toList());
+    //   int parallelism = Math.max(Math.min(filesToDelete.size(), recordsGenerationParams.getRecordLevelIndexParallelism()), 1);
+
+    //   HoodieData<Pair<String, String>> partitionToDeletedFilesRDD = engineContext.parallelize(filesToDelete, parallelism);
+
+    //   HoodieData<HoodieRecord> recordIndexToRollback = partitionToDeletedFilesRDD.flatMap(file -> {
+    //     return getRecordIndexFromParquetFile(engineContext, datasetBasePath, file, true);
+    //   });
+    //   partitionToRecordsMap.put(MetadataPartitionType.RECORD_LEVEL_INDEX, recordIndexToRollback);
+    //  }
 
 
     if (recordsGenerationParams.getEnabledPartitionTypes().contains(MetadataPartitionType.BLOOM_FILTERS)) {

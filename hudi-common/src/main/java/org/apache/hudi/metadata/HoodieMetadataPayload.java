@@ -566,14 +566,6 @@ public class HoodieMetadataPayload implements HoodieRecordPayload<HoodieMetadata
     return Option.of(columnStatMetadata);
   }
 
-  public Option<Map<String, HoodieMetadataFileInfo>> getFilesystemMetadata() {
-    if (filesystemMetadata == null) {
-      return Option.empty();
-    }
-
-    return Option.of(filesystemMetadata);
-  }
-
   /**
    * Get the record level index metadata from this payload.
    */
