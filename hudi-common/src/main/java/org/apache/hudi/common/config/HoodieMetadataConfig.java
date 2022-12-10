@@ -176,10 +176,10 @@ public final class HoodieMetadataConfig extends HoodieConfig {
           + "file group count such that the base files are under 1GB.");
 
   public static final ConfigProperty<Integer> COLUMN_STATS_INDEX_PARALLELISM = ConfigProperty
-          .key(METADATA_PREFIX + ".index.column.stats.parallelism")
-          .defaultValue(10)
-          .sinceVersion("0.11.0")
-          .withDocumentation("Parallelism to use, when generating column stats index.");
+      .key(METADATA_PREFIX + ".index.column.stats.parallelism")
+      .defaultValue(10)
+      .sinceVersion("0.11.0")
+      .withDocumentation("Parallelism to use, when generating column stats index.");
 
   public static final ConfigProperty<String> COLUMN_STATS_INDEX_FOR_COLUMNS = ConfigProperty
       .key(METADATA_PREFIX + ".index.column.stats.column.list")
@@ -235,23 +235,22 @@ public final class HoodieMetadataConfig extends HoodieConfig {
           + "such spurious deletes");
 
   public static final ConfigProperty<Boolean> ENABLE_METADATA_INDEX_RECORD_LEVEL_INDEX = ConfigProperty
-          .key(METADATA_PREFIX + ".record.index.enabled")
-          .defaultValue(false)
-          .sinceVersion("0.13.0")
-          .withDocumentation("Enable Record Level Index");
+      .key(METADATA_PREFIX + ".record.index.enabled")
+      .defaultValue(false)
+      .sinceVersion("0.13.0")
+      .withDocumentation("Enable Record Level Index");
 
   public static final ConfigProperty<Integer> METADATA_INDEX_RECORD_INDEX_FILE_GROUP_COUNT = ConfigProperty
-          .key(METADATA_PREFIX + ".index.record.index.file.group.count")
-          .defaultValue(10)
-          .sinceVersion("0.13.0")
-          .withDocumentation("Number of shards to use for Record Level Index");
+      .key(METADATA_PREFIX + ".index.record.index.file.group.count")
+      .defaultValue(10)
+      .sinceVersion("0.13.0")
+      .withDocumentation("Number of shards to use for Record Level Index");
 
   public static final ConfigProperty<Integer> RECORD_LEVEL_INDEX_PARALLELISM = ConfigProperty
-          .key(METADATA_PREFIX + ".index.record.index.parallelism")
-          .defaultValue(10)
-          .sinceVersion("0.11.0")
-          .withDocumentation("Parallelism to use, when generating column stats index.");
-
+      .key(METADATA_PREFIX + ".index.record.index.parallelism")
+      .defaultValue(10)
+      .sinceVersion("0.11.0")
+      .withDocumentation("Parallelism to use, when generating column stats index.");
 
   private HoodieMetadataConfig() {
     super();
@@ -385,7 +384,6 @@ public final class HoodieMetadataConfig extends HoodieConfig {
       metadataConfig.setValue(RECORD_LEVEL_INDEX_PARALLELISM, String.valueOf(parallelism));
       return this;
     }
-
 
     public Builder withMetadataIndexBloomFilterFileGroups(int fileGroupCount) {
       metadataConfig.setValue(METADATA_INDEX_BLOOM_FILTER_FILE_GROUP_COUNT, String.valueOf(fileGroupCount));

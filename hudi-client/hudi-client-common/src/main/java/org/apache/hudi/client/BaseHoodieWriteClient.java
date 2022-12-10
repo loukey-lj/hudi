@@ -227,7 +227,8 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
     return doCommit(instantTime, stats, extraMetadata, commitActionType, partitionToReplaceFileIds, table);
   }
 
-  private boolean doCommit(String instantTime, List<HoodieWriteStat> stats, Option<Map<String, String>> extraMetadata, String commitActionType, Map<String, List<String>> partitionToReplaceFileIds, HoodieTable table) {
+  private boolean doCommit(String instantTime, List<HoodieWriteStat> stats, Option<Map<String, String>> extraMetadata, String commitActionType,
+                           Map<String, List<String>> partitionToReplaceFileIds, HoodieTable table) {
     HoodieCommitMetadata metadata = CommitUtils.buildMetadata(stats, partitionToReplaceFileIds,
         extraMetadata, operationType, config.getWriteSchema(), commitActionType);
     HoodieInstant inflightInstant = new HoodieInstant(State.INFLIGHT, table.getMetaClient().getCommitActionType(), instantTime);
@@ -269,7 +270,6 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
     // Create a Hoodie table which encapsulated the commits and files visible
     return doCommit(instantTime, stats, extraMetadata, commitActionType, partitionToReplaceFileIds, table);
   }
-
 
   protected void commit(HoodieTable table, String commitActionType, String instantTime, HoodieCommitMetadata metadata,
                       List<HoodieWriteStat> stats) throws IOException {

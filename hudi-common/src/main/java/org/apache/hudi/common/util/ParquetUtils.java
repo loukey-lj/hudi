@@ -166,11 +166,11 @@ public class ParquetUtils extends BaseFileUtils {
       Configuration conf = new Configuration(configuration);
       conf.addResource(FSUtils.getFs(filePath.toString(), conf).getConf());
       Schema readSchema = keyGeneratorOpt.map(keyGenerator -> {
-            List<String> fields = new ArrayList<>();
-            fields.addAll(keyGenerator.getRecordKeyFieldNames());
-            fields.addAll(keyGenerator.getPartitionPathFields());
-            return HoodieAvroUtils.getSchemaForFields(readAvroSchema(conf, filePath), fields);
-          })
+        List<String> fields = new ArrayList<>();
+        fields.addAll(keyGenerator.getRecordKeyFieldNames());
+        fields.addAll(keyGenerator.getPartitionPathFields());
+        return HoodieAvroUtils.getSchemaForFields(readAvroSchema(conf, filePath), fields);
+      })
           .orElse(HoodieAvroUtils.getRecordKeyPartitionPathSchema());
       AvroReadSupport.setAvroReadSchema(conf, readSchema);
       AvroReadSupport.setRequestedProjection(conf, readSchema);

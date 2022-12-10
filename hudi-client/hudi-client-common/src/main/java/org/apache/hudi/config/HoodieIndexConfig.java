@@ -44,7 +44,14 @@ import static org.apache.hudi.config.HoodieHBaseIndexConfig.PUT_BATCH_SIZE;
 import static org.apache.hudi.config.HoodieHBaseIndexConfig.TABLENAME;
 import static org.apache.hudi.config.HoodieHBaseIndexConfig.ZKPORT;
 import static org.apache.hudi.config.HoodieHBaseIndexConfig.ZKQUORUM;
-import static org.apache.hudi.index.HoodieIndex.IndexType.*;
+import static org.apache.hudi.index.HoodieIndex.IndexType.BLOOM;
+import static org.apache.hudi.index.HoodieIndex.IndexType.BUCKET;
+import static org.apache.hudi.index.HoodieIndex.IndexType.GLOBAL_BLOOM;
+import static org.apache.hudi.index.HoodieIndex.IndexType.GLOBAL_SIMPLE;
+import static org.apache.hudi.index.HoodieIndex.IndexType.HBASE;
+import static org.apache.hudi.index.HoodieIndex.IndexType.INMEMORY;
+import static org.apache.hudi.index.HoodieIndex.IndexType.RECORD_LEVEL;
+import static org.apache.hudi.index.HoodieIndex.IndexType.SIMPLE;
 
 /**
  * Indexing related config.
@@ -612,10 +619,10 @@ public class HoodieIndexConfig extends HoodieConfig {
     private String getDefaultIndexType(EngineType engineType) {
       switch (engineType) {
         case SPARK:
-          return HoodieIndex.IndexType.SIMPLE.name();
+          return SIMPLE.name();
         case FLINK:
         case JAVA:
-          return HoodieIndex.IndexType.INMEMORY.name();
+          return INMEMORY.name();
         default:
           throw new HoodieNotSupportedException("Unsupported engine " + engineType);
       }
@@ -626,7 +633,7 @@ public class HoodieIndexConfig extends HoodieConfig {
     }
 
     private void validateBucketIndexConfig() {
-      if (hoodieIndexConfig.getString(INDEX_TYPE).equalsIgnoreCase(HoodieIndex.IndexType.BUCKET.toString())) {
+      if (hoodieIndexConfig.getString(INDEX_TYPE).equalsIgnoreCase(BUCKET.toString())) {
         // check the bucket index hash field
         if (StringUtils.isNullOrEmpty(hoodieIndexConfig.getString(BUCKET_INDEX_HASH_FIELD))) {
           hoodieIndexConfig.setValue(BUCKET_INDEX_HASH_FIELD,

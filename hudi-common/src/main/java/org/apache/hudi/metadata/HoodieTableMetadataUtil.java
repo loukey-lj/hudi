@@ -18,10 +18,7 @@
 
 package org.apache.hudi.metadata;
 
-import org.apache.commons.collections.map.HashedMap;
-
 import org.apache.hudi.avro.ConvertingGenericData;
-import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.avro.model.HoodieCleanMetadata;
 import org.apache.hudi.avro.model.HoodieMetadataColumnStats;
 import org.apache.hudi.avro.model.HoodieRestoreMetadata;
@@ -31,7 +28,17 @@ import org.apache.hudi.common.config.HoodieMetadataConfig;
 import org.apache.hudi.common.data.HoodieData;
 import org.apache.hudi.common.engine.HoodieEngineContext;
 import org.apache.hudi.common.fs.FSUtils;
-import org.apache.hudi.common.model.*;
+import org.apache.hudi.common.model.FileSlice;
+import org.apache.hudi.common.model.HoodieColumnRangeMetadata;
+import org.apache.hudi.common.model.HoodieCommitMetadata;
+import org.apache.hudi.common.model.HoodieDeltaWriteStat;
+import org.apache.hudi.common.model.HoodieFileFormat;
+import org.apache.hudi.common.model.HoodieKey;
+import org.apache.hudi.common.model.HoodieOperation;
+import org.apache.hudi.common.model.HoodieRecord;
+import org.apache.hudi.common.model.HoodieReplaceCommitMetadata;
+import org.apache.hudi.common.model.HoodieWriteStat;
+import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.TableSchemaResolver;
@@ -51,7 +58,6 @@ import org.apache.hudi.exception.HoodieIOException;
 import org.apache.hudi.exception.HoodieMetadataException;
 import org.apache.hudi.io.storage.HoodieFileReader;
 import org.apache.hudi.io.storage.HoodieFileReaderFactory;
-import org.apache.hudi.io.storage.HoodieParquetReader;
 import org.apache.hudi.keygen.BaseKeyGenerator;
 import org.apache.hudi.util.Lazy;
 
@@ -65,11 +71,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
-import org.apache.parquet.avro.AvroParquetReader;
-import org.apache.parquet.avro.AvroReadSupport;
-import org.apache.parquet.hadoop.ParquetReader;
-import org.apache.parquet.hadoop.metadata.BlockMetaData;
-import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nonnull;
 
@@ -77,7 +78,17 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collector;
@@ -631,24 +642,6 @@ public class HoodieTableMetadataUtil {
     final HoodieData<HoodieRecord> rollbackRecordsRDD = engineContext.parallelize(filesPartitionRecords, 1);
     partitionToRecordsMap.put(MetadataPartitionType.FILES, rollbackRecordsRDD);
 
-    // Make rollback index record by rollbackMetadata
-    // if(recordsGenerationParams.getEnabledPartitionTypes().contains(MetadataPartitionType.RECORD_LEVEL_INDEX) && !filesPartitionRecords.isEmpty()){
-    // List<Pair<partition, Pair<fileId, isDelete>>
-    // List<Pair<String, Pair<String, Boolean>>> partitionAndFilesFromRollbackMetadata = filesPartitionRecords.stream().map(fm -> Pair.of(fm.getRecordKey(), ((HoodieMetadataPayload) fm.getData()).getFilesystemMetadata().get()))
-    //           .flatMap(partitionAndFiles -> partitionAndFiles.getValue().entrySet().stream().map(e -> Pair.of(partitionAndFiles.getKey(), Pair.of(e.getKey(), e.getValue().getIsDeleted())))).collect(Collectors.toList());
-
-    //   List<Pair<String, String>> filesToDelete = partitionAndFilesFromRollbackMetadata.stream().filter(x -> x.getValue().getValue()).map(x -> Pair.of(x.getKey(), x.getValue().getKey())).collect(Collectors.toList());
-    //   int parallelism = Math.max(Math.min(filesToDelete.size(), recordsGenerationParams.getRecordLevelIndexParallelism()), 1);
-
-    //   HoodieData<Pair<String, String>> partitionToDeletedFilesRDD = engineContext.parallelize(filesToDelete, parallelism);
-
-    //   HoodieData<HoodieRecord> recordIndexToRollback = partitionToDeletedFilesRDD.flatMap(file -> {
-    //     return getRecordIndexFromParquetFile(engineContext, datasetBasePath, file, true);
-    //   });
-    //   partitionToRecordsMap.put(MetadataPartitionType.RECORD_LEVEL_INDEX, recordIndexToRollback);
-    //  }
-
-
     if (recordsGenerationParams.getEnabledPartitionTypes().contains(MetadataPartitionType.BLOOM_FILTERS)) {
       final HoodieData<HoodieRecord> metadataBloomFilterRecordsRDD =
           convertFilesToBloomFilterRecords(engineContext, partitionToDeletedFiles, partitionToAppendedFiles, recordsGenerationParams, instantTime);
@@ -1014,7 +1007,6 @@ public class HoodieTableMetadataUtil {
     return allRecordsRDD;
   }
 
-  @NotNull
   private static Iterator<HoodieRecord> getRecordIndexFromParquetFile(
       Configuration conf,
       String datasetBasePath,

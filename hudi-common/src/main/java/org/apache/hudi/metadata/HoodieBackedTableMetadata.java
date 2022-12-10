@@ -20,7 +20,6 @@ package org.apache.hudi.metadata;
 
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.hadoop.fs.Path;
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.avro.model.HoodieMetadataRecord;
@@ -45,6 +44,7 @@ import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.common.table.timeline.TimelineMetadataUtils;
 import org.apache.hudi.common.util.ClosableIterator;
+import org.apache.hudi.common.util.CollectionUtils;
 import org.apache.hudi.common.util.HoodieTimer;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.SpillableMapUtils;
@@ -75,7 +75,10 @@ import java.util.stream.Collectors;
 import static org.apache.hudi.common.util.CollectionUtils.isNullOrEmpty;
 import static org.apache.hudi.common.util.CollectionUtils.toStream;
 import static org.apache.hudi.common.util.ValidationUtils.checkArgument;
-import static org.apache.hudi.metadata.HoodieTableMetadataUtil.*;
+import static org.apache.hudi.metadata.HoodieTableMetadataUtil.PARTITION_NAME_BLOOM_FILTERS;
+import static org.apache.hudi.metadata.HoodieTableMetadataUtil.PARTITION_NAME_COLUMN_STATS;
+import static org.apache.hudi.metadata.HoodieTableMetadataUtil.PARTITION_NAME_FILES;
+import static org.apache.hudi.metadata.HoodieTableMetadataUtil.PARTITION_NAME_RECORD_LEVEL_INDEX;
 
 /**
  * Table metadata provided by an internal DFS backed Hudi metadata table.
@@ -287,7 +290,7 @@ public class HoodieBackedTableMetadata extends BaseTableMetadata {
     HoodieTimer timer = new HoodieTimer().startTimer();
     timer.startTimer();
 
-    if (baseFileReader == null || CollectionUtils.isEmpty(keys)) {
+    if (baseFileReader == null || CollectionUtils.isNullOrEmpty(keys)) {
       // No base file at all
       timings.add(timer.endTimer());
       if (fullKeys) {
