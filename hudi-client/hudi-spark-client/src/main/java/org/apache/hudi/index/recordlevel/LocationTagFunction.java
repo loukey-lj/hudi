@@ -22,6 +22,7 @@ import org.apache.hudi.avro.model.HoodieMetadataRecordLevelIndex;
 import org.apache.hudi.common.model.EmptyHoodieRecordPayload;
 import org.apache.hudi.common.model.HoodieAvroRecord;
 import org.apache.hudi.common.model.HoodieKey;
+import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordGlobalLocation;
 import org.apache.hudi.common.model.HoodieRecordPayload;
@@ -153,25 +154,23 @@ public class LocationTagFunction<R extends HoodieRecordPayload> implements FlatM
         //get record to update
         Integer index = keyToIndexMap.get(key);
         HoodieRecord<R> toUpdateRecord = taggedRecords.get(index);
+        String toUpdatePartition = toUpdateRecord.getPartitionPath();
 
-        if (!tableConfig.shouldUpdatePartition()) {
+        if (!tableConfig.shouldUpdatePartition() || oldPartition.equals(toUpdatePartition)) {
           HoodieKey hoodieKey = new HoodieKey(toUpdateRecord.getRecordKey(), oldPartition);
           toUpdateRecord = new HoodieAvroRecord(hoodieKey, toUpdateRecord.getData());
+          toUpdateRecord.unseal();
+          toUpdateRecord.setCurrentLocation(taggedLocation);
+          toUpdateRecord.seal();
           taggedRecords.set(index, toUpdateRecord);
         } else {
-          String toUpdatePartition = toUpdateRecord.getPartitionPath();
-          if (oldPartition.equals(toUpdatePartition)) {
-            toUpdateRecord.unseal();
-            toUpdateRecord.setCurrentLocation(taggedLocation);
-            toUpdateRecord.seal();
-          } else {
-            HoodieRecord deleteRecord = new HoodieAvroRecord(new HoodieKey(toUpdateRecord.getRecordKey(), oldPartition),
-                new EmptyHoodieRecordPayload());
-            deleteRecord.unseal();
-            deleteRecord.setCurrentLocation(taggedLocation);
-            deleteRecord.seal();
-            taggedRecords.add(deleteRecord);
-          }
+          // Partition changed, add delete record to old fileGroup
+          HoodieRecord deleteRecord = new HoodieAvroRecord(new HoodieKey(toUpdateRecord.getRecordKey(), oldPartition),
+              new EmptyHoodieRecordPayload(), HoodieOperation.UPDATE_BEFORE);
+          deleteRecord.unseal();
+          deleteRecord.setCurrentLocation(taggedLocation);
+          deleteRecord.seal();
+          taggedRecords.add(deleteRecord);
         }
       }
     }

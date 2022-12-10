@@ -263,4 +263,9 @@ public class OrcUtils extends BaseFileUtils {
       throw new HoodieIOException("Unable to get row count for ORC file:" + orcFilePath, io);
     }
   }
+
+  @Override
+  public List<Long> getBlockRecordSize(Configuration configuration, Path path) {
+    return  new ArrayList<>();
+  }
 }

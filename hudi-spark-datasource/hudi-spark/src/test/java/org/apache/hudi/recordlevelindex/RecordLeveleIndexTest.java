@@ -24,17 +24,12 @@ import org.apache.hudi.common.config.HoodieMetadataConfig;
 import org.apache.hudi.common.model.HoodieAvroRecord;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
-import org.apache.hudi.common.testutils.HoodieTestDataGenerator;
 import org.apache.hudi.common.testutils.RawTripTestPayload;
 import org.apache.hudi.common.util.Option;
-import org.apache.hudi.config.HoodieCompactionConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
-import org.apache.hudi.keygen.NonpartitionedKeyGenerator;
 import org.apache.hudi.keygen.SimpleKeyGenerator;
 
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.log4j.LogManager;
@@ -52,20 +47,14 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
-
-import static org.apache.hudi.common.testutils.RawTripTestPayload.recordsToStrings;
 
 /**
  * Sample program that writes & reads hoodie tables via the Spark datasource.
  */
 public class RecordLeveleIndexTest {
-
   private String tablePath = "file:///tmp/hoodie/hoodie_test";
   private String tableName = "hoodie_test";
-
-
   private Schema schema = new Schema.Parser().parse("{\n" +
       "    \"type\":\"record\",\n" +
       "    \"name\":\"test\",\n" +
@@ -89,70 +78,73 @@ public class RecordLeveleIndexTest {
       "    ]\n" +
       "}");
   private static final Logger LOG = LogManager.getLogger(RecordLeveleIndexTest.class);
-
   @Test
-  public void run() throws Exception {
+  public void writeTest() throws Exception {
 
-    // Spark session setup..
     SparkSession spark = SparkSession.builder().appName("Hoodie Spark APP")
         .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer").master("local[1]").getOrCreate();
     JavaSparkContext jssc = new JavaSparkContext(spark.sparkContext());
     spark.sparkContext().setLogLevel("WARN");
     FileSystem fs = FileSystem.get(jssc.hadoopConfiguration());
-    // Explicitly clear up the hoodie table path if it exists.
     fs.delete(new Path(tablePath), true);
 
     List<String> dataList = getHoodieRecords(0, 9, "p1");
-
     writeHudi(spark, jssc, fs, dataList);
+    checkData(spark);
 
-    Row[] collect = (Row[]) spark.sql("select count(1) from dv d inner join mv as m " +
-        "on d.key=m.key where d.partition = m.partition   ").collect();
-    GenericRowWithSchema genericRowWithSchema = (GenericRowWithSchema) collect[0];
-    assert genericRowWithSchema.getLong(0) == dataList.size();
+    // Partition change
+    dataList = getHoodieRecords(0, 9, "p2");
+    writeHudi(spark, jssc, fs, dataList);
+    checkData(spark);
+  }
 
-    //update
-//    List<HoodieRecord> recordsToBeUpdated = dataGen.generateUpdates("002"/* ignore */, 100);
-//    recordsSoFar.addAll(recordsToBeUpdated);
-//    List<String> records2 = recordsToStrings(recordsToBeUpdated);
-//    Dataset<Row> inputDF2 = spark.read().json(jssc.parallelize(records2, 2));
-//    writer = inputDF2.write().format("org.apache.hudi").option("hoodie.insert.shuffle.parallelism", "2")
-//        .option("hoodie.upsert.shuffle.parallelism", "2")
-//        .option(HoodieMetadataConfig.ENABLE_METADATA_INDEX_RECORD_LEVEL_INDEX.key(), true)
-//        .option(HoodieMetadataConfig.METADATA_INDEX_RECORD_INDEX_FILE_GROUP_COUNT.key(), 4)
-//        .option(HoodieMetadataConfig.RECORD_LEVEL_INDEX_PARALLELISM.key(), 4)
-//        .option(DataSourceWriteOptions.RECORDKEY_FIELD().key(), "_row_key")
-//        .option(DataSourceWriteOptions.PARTITIONPATH_FIELD().key(), "partition")
-//        .option(DataSourceWriteOptions.PRECOMBINE_FIELD().key(), "timestamp")
-//        .option(DataSourceWriteOptions.KEYGENERATOR_CLASS_NAME().key(),
-//            SimpleKeyGenerator.class.getCanonicalName()) // Add Key Extractor
-//        .option(HoodieCompactionConfig.INLINE_COMPACT_NUM_DELTA_COMMITS.key(), "1")
-//        .option(DataSourceWriteOptions.ASYNC_COMPACT_ENABLE().key(), "false")
-//        .option(DataSourceWriteOptions.ASYNC_CLUSTERING_ENABLE().key(), "true")
-//        .option(HoodieWriteConfig.TBL_NAME.key(), tableName).mode(SaveMode.Append);
-//
-//    writer.save(tablePath);
-//    String commitInstantTime2 = HoodieDataSourceHelpers.latestCommit(fs, tablePath);
-//    LOG.info("Second commit at instant time :" + commitInstantTime2);
-//
-//    Dataset<Row> dataset2 = spark.read().format("org.apache.hudi")
-//        .load(tablePath + "/*/*/*/*");
-//    dataset2.registerTempTable("dataset2");
-//
-//
-//    Dataset<Row> meta2 = spark.read().format("org.apache.hudi")
-//        .load(tablePath + "/.hoodie/metadata");
-//    meta1.registerTempTable("meta2");
-//    spark.sql("drop view if exists  mv");
-//    spark.sql(
-//        "create temporary view  mv as select key, recordLevelIndexMetadata['partition'] as partition, recordLevelIndexMetadata['fileId'] as fileId, recordLevelIndexMetadata['isDeleted'] as isDeleted, recordLevelIndexMetadata['commitTime'] as commitTime, recordLevelIndexMetadata['rowGroupIndex'] as rowGroupIndex from meta2");
-//
-//    Row[] collect2 = (Row[]) spark.sql("select count(1) from dataset2 d inner join mv as m on d.key=m.key where d.partition = m.partition   ").collect();
-//    GenericRowWithSchema genericRowWithSchema2 = (GenericRowWithSchema) collect[0];
-//    Set<String> keys = recordsSoFar.stream().map(HoodieRecord::getRecordKey).collect(Collectors.toSet());
-//    assert genericRowWithSchema2.getLong(0) == keys.size();
+  @Test
+  public void compactionTest() throws Exception {
+    SparkSession spark = SparkSession.builder().appName("Hoodie Spark APP")
+        .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer").master("local[1]").getOrCreate();
+    JavaSparkContext jssc = new JavaSparkContext(spark.sparkContext());
+    spark.sparkContext().setLogLevel("WARN");
+    FileSystem fs = FileSystem.get(jssc.hadoopConfiguration());
+    fs.delete(new Path(tablePath), true);
+    List<String> dataList = getHoodieRecords(0, 20, "p1");
+    writeHudi(spark, jssc, fs, dataList);
+    for (int i = 0; i <= 20; i++) {
+      dataList = getHoodieRecords(i, i, "p2");
+      writeHudi(spark, jssc, fs, dataList);
+      checkData(spark);
+    }
+  }
+
+    @Test
+    public void initIndexTest() throws Exception {
+      SparkSession spark = SparkSession.builder().appName("Hoodie Spark APP")
+          .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer").master("local[1]").getOrCreate();
+      JavaSparkContext jssc = new JavaSparkContext(spark.sparkContext());
+      spark.sparkContext().setLogLevel("WARN");
+      FileSystem fs = FileSystem.get(jssc.hadoopConfiguration());
+      fs.delete(new Path(tablePath), true);
+      List<String> dataList = getHoodieRecords(0, 9, "p1");
+      writeHudi(spark, jssc, fs, dataList);
+
+      // Delete metadata
+      fs.delete(new Path(tablePath + "/.hoodie/metadata"), true);
+
+      dataList = getHoodieRecords(0, 9, "p2");
+      writeHudi(spark, jssc, fs, dataList);
+      checkData(spark);
+  }
 
 
+    private static void checkData(SparkSession spark) {
+    spark.sql("select * from dataset ").show(100, false);
+    spark.sql("select * from mv ").show(100, false);
+    Row[] dvCountRow = (Row[]) spark.sql("select count(1) from dv d ").collect();
+    GenericRowWithSchema dvCount = (GenericRowWithSchema) dvCountRow[0];
+
+    Row[] checkCountRow = (Row[]) spark.sql("select count(1) from dv d inner join mv as m " +
+        "on d.key=m.key where d.partition = m.partition  and  locate(m.fileId, d.fileId) > 0 and m.isDeleted = false").collect();
+    GenericRowWithSchema checkCount = (GenericRowWithSchema) checkCountRow[0];
+    assert checkCount.getLong(0) == dvCount.getLong(0);
   }
 
   private void writeHudi(SparkSession spark, JavaSparkContext jssc, FileSystem fs, List<String> dataList) {
@@ -165,14 +157,14 @@ public class RecordLeveleIndexTest {
         .option(HoodieMetadataConfig.METADATA_INDEX_RECORD_INDEX_FILE_GROUP_COUNT.key(), 2)
         .option(HoodieMetadataConfig.RECORD_LEVEL_INDEX_PARALLELISM.key(), 2)
         .option(DataSourceWriteOptions.RECORDKEY_FIELD().key(), "id")
-        .option(DataSourceWriteOptions.PARTITIONPATH_FIELD().key(), "pt")
+        .option(DataSourceWriteOptions.PARTITIONPATH_FIELD().key(), "dt")
         .option(DataSourceWriteOptions.PRECOMBINE_FIELD().key(), "ts")
         .option(HoodieWriteConfig.TBL_NAME.key(), tableName)
         .option(DataSourceWriteOptions.KEYGENERATOR_CLASS_NAME().key(),
             SimpleKeyGenerator.class.getCanonicalName())
         .option(DataSourceWriteOptions.ASYNC_COMPACT_ENABLE().key(), "false")
         .option(DataSourceWriteOptions.ASYNC_CLUSTERING_ENABLE().key(), "true")
-        .mode(SaveMode.Overwrite);
+        .mode(SaveMode.Append);
 
     // new dataset if needed
     writer.save(tablePath); // ultimately where the dataset will be placed
@@ -180,9 +172,13 @@ public class RecordLeveleIndexTest {
     LOG.info("First commit at instant time :" + commitInstantTime1);
 
 
+    registerTempTable(spark);
+  }
+
+  private void registerTempTable(SparkSession spark) {
     spark.sql("drop table if exists  dataset");
     Dataset<Row> dataset = spark.read().format("org.apache.hudi")
-        .load(tablePath + "/*/*/*/*");
+        .load(tablePath + "/");
     dataset.registerTempTable("dataset");
 
     spark.sql("drop table if exists  meta");
@@ -192,16 +188,21 @@ public class RecordLeveleIndexTest {
 
     spark.sql("drop view if exists  mv");
     spark.sql(
-        "create temporary view  mv as select key, recordLevelIndexMetadata['partition'] as partition, recordLevelIndexMetadata['fileId'] as fileId, recordLevelIndexMetadata['isDeleted'] as isDeleted, recordLevelIndexMetadata['commitTime'] as commitTime, recordLevelIndexMetadata['rowGroupIndex'] as rowGroupIndex from meta");
+        "create temporary view  mv as " +
+            "select key, " +
+            "recordLevelIndexMetadata['partition'] as partition, " +
+            "recordLevelIndexMetadata['fileId'] as fileId, " +
+            "recordLevelIndexMetadata['isDeleted'] as isDeleted, " +
+            "recordLevelIndexMetadata['commitTime'] as commitTime, " +
+            "recordLevelIndexMetadata['rowGroupIndex'] as rowGroupIndex from meta");
 
     spark.sql("drop view if exists  dv");
     spark.sql(
         "create temporary view  dv as select " +
             "_hoodie_record_key     as key," +
             "_hoodie_partition_path as partition, " +
-            "__hoodie_file_name     as fileId," +
+            "_hoodie_file_name     as fileId," +
             "_hoodie_commit_time    as commitTime from dataset");
-
   }
 
   @NotNull
@@ -223,13 +224,6 @@ public class RecordLeveleIndexTest {
       }
     }).filter(Option::isPresent).map(Option::get).collect(Collectors.toList());
     return records;
-  }
-
-
-  public void insertData(String[] datas) throws IOException {
-    GenericRecord rec = new GenericData.Record(schema);
-
-
   }
 
 }

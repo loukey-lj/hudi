@@ -155,10 +155,9 @@ public class ParquetUtils extends BaseFileUtils {
   /**
    * Returns a closable iterator for reading the given parquet file.
    *
-   * @param configuration configuration to build fs object
-   * @param filePath      The parquet file path
+   * @param configuration   configuration to build fs object
+   * @param filePath        The parquet file path
    * @param keyGeneratorOpt instance of KeyGenerator
-   *
    * @return {@link ClosableIterator} of {@link HoodieKey}s for reading the parquet file
    */
   @Override
@@ -167,11 +166,11 @@ public class ParquetUtils extends BaseFileUtils {
       Configuration conf = new Configuration(configuration);
       conf.addResource(FSUtils.getFs(filePath.toString(), conf).getConf());
       Schema readSchema = keyGeneratorOpt.map(keyGenerator -> {
-        List<String> fields = new ArrayList<>();
-        fields.addAll(keyGenerator.getRecordKeyFieldNames());
-        fields.addAll(keyGenerator.getPartitionPathFields());
-        return HoodieAvroUtils.getSchemaForFields(readAvroSchema(conf, filePath), fields);
-      })
+            List<String> fields = new ArrayList<>();
+            fields.addAll(keyGenerator.getRecordKeyFieldNames());
+            fields.addAll(keyGenerator.getPartitionPathFields());
+            return HoodieAvroUtils.getSchemaForFields(readAvroSchema(conf, filePath), fields);
+          })
           .orElse(HoodieAvroUtils.getRecordKeyPartitionPathSchema());
       AvroReadSupport.setAvroReadSchema(conf, readSchema);
       AvroReadSupport.setRequestedProjection(conf, readSchema);
@@ -208,7 +207,7 @@ public class ParquetUtils extends BaseFileUtils {
 
   @Override
   public Map<String, String> readFooter(Configuration configuration, boolean required,
-                                                       Path parquetFilePath, String... footerNames) {
+                                        Path parquetFilePath, String... footerNames) {
     Map<String, String> footerVals = new HashMap<>();
     ParquetMetadata footer = readMetadata(configuration, parquetFilePath);
     Map<String, String> metadata = footer.getFileMetaData().getKeyValueMetaData();
@@ -311,25 +310,25 @@ public class ParquetUtils extends BaseFileUtils {
     // Collect stats from all individual Parquet blocks
     Map<String, List<HoodieColumnRangeMetadata<Comparable>>> columnToStatsListMap =
         (Map<String, List<HoodieColumnRangeMetadata<Comparable>>>) metadata.getBlocks().stream().sequential()
-          .flatMap(blockMetaData ->
-              blockMetaData.getColumns().stream()
-                .filter(f -> cols.contains(f.getPath().toDotString()))
-                .map(columnChunkMetaData ->
-                    HoodieColumnRangeMetadata.<Comparable>create(
-                        parquetFilePath.getName(),
-                        columnChunkMetaData.getPath().toDotString(),
-                        convertToNativeJavaType(
-                            columnChunkMetaData.getPrimitiveType(),
-                            columnChunkMetaData.getStatistics().genericGetMin()),
-                        convertToNativeJavaType(
-                            columnChunkMetaData.getPrimitiveType(),
-                            columnChunkMetaData.getStatistics().genericGetMax()),
-                        columnChunkMetaData.getStatistics().getNumNulls(),
-                        columnChunkMetaData.getValueCount(),
-                        columnChunkMetaData.getTotalSize(),
-                        columnChunkMetaData.getTotalUncompressedSize()))
-          )
-          .collect(groupingByCollector);
+            .flatMap(blockMetaData ->
+                blockMetaData.getColumns().stream()
+                    .filter(f -> cols.contains(f.getPath().toDotString()))
+                    .map(columnChunkMetaData ->
+                        HoodieColumnRangeMetadata.<Comparable>create(
+                            parquetFilePath.getName(),
+                            columnChunkMetaData.getPath().toDotString(),
+                            convertToNativeJavaType(
+                                columnChunkMetaData.getPrimitiveType(),
+                                columnChunkMetaData.getStatistics().genericGetMin()),
+                            convertToNativeJavaType(
+                                columnChunkMetaData.getPrimitiveType(),
+                                columnChunkMetaData.getStatistics().genericGetMax()),
+                            columnChunkMetaData.getStatistics().getNumNulls(),
+                            columnChunkMetaData.getValueCount(),
+                            columnChunkMetaData.getTotalSize(),
+                            columnChunkMetaData.getTotalUncompressedSize()))
+            )
+            .collect(groupingByCollector);
 
     // Combine those into file-level statistics
     // NOTE: Inlining this var makes javac (1.8) upset (due to its inability to infer
@@ -489,5 +488,10 @@ public class ParquetUtils extends BaseFileUtils {
     public HoodieKey next() {
       return this.func.apply(this.nestedItr.next());
     }
+  }
+
+  @Override
+  public List<Long> getBlockRecordSize(Configuration configuration, Path path) {
+    return readMetadata(configuration, path).getBlocks().stream().map(x -> x.getRowCount()).collect(Collectors.toList());
   }
 }

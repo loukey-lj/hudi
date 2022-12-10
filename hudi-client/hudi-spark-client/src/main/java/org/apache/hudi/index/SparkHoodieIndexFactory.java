@@ -108,7 +108,7 @@ public final class SparkHoodieIndexFactory {
     }
   }
 
-  private static Option<BaseKeyGenerator> getKeyGeneratorForSimpleIndex(HoodieWriteConfig config) {
+  public static Option<BaseKeyGenerator> getKeyGeneratorForSimpleIndex(HoodieWriteConfig config) {
     try {
       return config.populateMetaFields() ? Option.empty()
           : Option.of((BaseKeyGenerator) HoodieSparkKeyGeneratorFactory.createKeyGenerator(new TypedProperties(config.getProps())));

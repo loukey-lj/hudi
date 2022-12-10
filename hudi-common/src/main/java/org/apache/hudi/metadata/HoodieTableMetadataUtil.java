@@ -19,6 +19,7 @@
 package org.apache.hudi.metadata;
 
 import org.apache.commons.collections.map.HashedMap;
+
 import org.apache.hudi.avro.ConvertingGenericData;
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.avro.model.HoodieCleanMetadata;
@@ -39,6 +40,7 @@ import org.apache.hudi.common.table.timeline.HoodieDefaultTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.common.table.view.HoodieTableFileSystemView;
+import org.apache.hudi.common.util.BaseFileUtils;
 import org.apache.hudi.common.util.CollectionUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ParquetUtils;
@@ -50,6 +52,7 @@ import org.apache.hudi.exception.HoodieMetadataException;
 import org.apache.hudi.io.storage.HoodieFileReader;
 import org.apache.hudi.io.storage.HoodieFileReaderFactory;
 import org.apache.hudi.io.storage.HoodieParquetReader;
+import org.apache.hudi.keygen.BaseKeyGenerator;
 import org.apache.hudi.util.Lazy;
 
 import org.apache.avro.AvroTypeException;
@@ -57,10 +60,14 @@ import org.apache.avro.LogicalTypes;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+import org.apache.parquet.avro.AvroParquetReader;
+import org.apache.parquet.avro.AvroReadSupport;
+import org.apache.parquet.hadoop.ParquetReader;
 import org.apache.parquet.hadoop.metadata.BlockMetaData;
 import org.jetbrains.annotations.NotNull;
 
@@ -103,12 +110,11 @@ public class HoodieTableMetadataUtil {
    * Collects {@link HoodieColumnRangeMetadata} for the provided collection of records, pretending
    * as if provided records have been persisted w/in given {@code filePath}
    *
-   * @param records target records to compute column range metadata for
+   * @param records      target records to compute column range metadata for
    * @param targetFields columns (fields) to be collected
-   * @param filePath file path value required for {@link HoodieColumnRangeMetadata}
-   *
+   * @param filePath     file path value required for {@link HoodieColumnRangeMetadata}
    * @return map of {@link HoodieColumnRangeMetadata} for each of the provided target fields for
-   *         the collection of provided records
+   * the collection of provided records
    */
   public static Map<String, HoodieColumnRangeMetadata<Comparable>> collectColumnRangeMetadata(List<IndexedRecord> records,
                                                                                               List<Schema.Field> targetFields,
@@ -159,23 +165,23 @@ public class HoodieTableMetadataUtil {
         Collectors.toMap(colRangeMetadata -> colRangeMetadata.getColumnName(), Function.identity());
 
     return (Map<String, HoodieColumnRangeMetadata<Comparable>>) targetFields.stream()
-      .map(field -> {
-        ColumnStats colStats = allColumnStats.get(field.name());
-        return HoodieColumnRangeMetadata.<Comparable>create(
-            filePath,
-            field.name(),
-            colStats == null ? null : coerceToComparable(field.schema(), colStats.minValue),
-            colStats == null ? null : coerceToComparable(field.schema(), colStats.maxValue),
-            colStats == null ? 0 : colStats.nullCount,
-            colStats == null ? 0 : colStats.valueCount,
-            // NOTE: Size and compressed size statistics are set to 0 to make sure we're not
-            //       mixing up those provided by Parquet with the ones from other encodings,
-            //       since those are not directly comparable
-            0,
-            0
-        );
-      })
-      .collect(collector);
+        .map(field -> {
+          ColumnStats colStats = allColumnStats.get(field.name());
+          return HoodieColumnRangeMetadata.<Comparable>create(
+              filePath,
+              field.name(),
+              colStats == null ? null : coerceToComparable(field.schema(), colStats.minValue),
+              colStats == null ? null : coerceToComparable(field.schema(), colStats.maxValue),
+              colStats == null ? 0 : colStats.nullCount,
+              colStats == null ? 0 : colStats.valueCount,
+              // NOTE: Size and compressed size statistics are set to 0 to make sure we're not
+              //       mixing up those provided by Parquet with the ones from other encodings,
+              //       since those are not directly comparable
+              0,
+              0
+          );
+        })
+        .collect(collector);
   }
 
   /**
@@ -627,7 +633,7 @@ public class HoodieTableMetadataUtil {
 
     // Make rollback index record by rollbackMetadata
     // if(recordsGenerationParams.getEnabledPartitionTypes().contains(MetadataPartitionType.RECORD_LEVEL_INDEX) && !filesPartitionRecords.isEmpty()){
-      // List<Pair<partition, Pair<fileId, isDelete>>
+    // List<Pair<partition, Pair<fileId, isDelete>>
     // List<Pair<String, Pair<String, Boolean>>> partitionAndFilesFromRollbackMetadata = filesPartitionRecords.stream().map(fm -> Pair.of(fm.getRecordKey(), ((HoodieMetadataPayload) fm.getData()).getFilesystemMetadata().get()))
     //           .flatMap(partitionAndFiles -> partitionAndFiles.getValue().entrySet().stream().map(e -> Pair.of(partitionAndFiles.getKey(), Pair.of(e.getKey(), e.getValue().getIsDeleted())))).collect(Collectors.toList());
 
@@ -977,49 +983,66 @@ public class HoodieTableMetadataUtil {
                                                                         Map<String, List<String>> partitionToDeletedFiles,
                                                                         Map<String, Map<String, Long>> partitionToAppendedFiles,
                                                                         MetadataRecordsGenerationParams recordsGenerationParams,
+                                                                        String instantTime,
                                                                         String datasetBasePath,
-                                                                        String instantTime) {
+                                                                        Option<BaseKeyGenerator> keyGeneratorOpt) {
     HoodieData<HoodieRecord> allRecordsRDD = engineContext.emptyHoodieData();
 
     List<Pair<String, List<String>>> partitionToDeletedFilesList = partitionToDeletedFiles.entrySet()
-            .stream().map(e -> Pair.of(e.getKey(), e.getValue())).collect(Collectors.toList());
+        .stream().map(e -> Pair.of(e.getKey(), e.getValue())).collect(Collectors.toList());
     List<Pair<String, String>> filesToDelete = partitionToDeletedFilesList.stream().flatMap(e -> e.getRight().stream().map(f -> Pair.of(e.getLeft(), f))).collect(Collectors.toList());
     int parallelism = Math.max(Math.min(filesToDelete.size(), recordsGenerationParams.getRecordLevelIndexParallelism()), 1);
     HoodieData<Pair<String, String>> partitionToDeletedFilesRDD = engineContext.parallelize(filesToDelete, parallelism);
 
-    HoodieData<HoodieRecord> deletedFilesRecordsRDD = partitionToDeletedFilesRDD.filter(p->FSUtils.isBaseFile(new Path(p.getRight()))).flatMap(partitionToDeletedFilePair -> {
-      return getRecordIndexFromParquetFile(engineContext, datasetBasePath, partitionToDeletedFilePair, true);
+    HoodieData<HoodieRecord> deletedFilesRecordsRDD = partitionToDeletedFilesRDD.filter(p -> FSUtils.isBaseFile(new Path(p.getRight()))).flatMap(partitionToDeletedFilePair -> {
+      return getRecordIndexFromParquetFile(new Configuration(), datasetBasePath, partitionToDeletedFilePair, true, keyGeneratorOpt);
     });
     allRecordsRDD = allRecordsRDD.union(deletedFilesRecordsRDD);
 
     List<Pair<String, Map<String, Long>>> partitionToAppendedFilesList = partitionToAppendedFiles.entrySet()
-            .stream().map(entry -> Pair.of(entry.getKey(), entry.getValue())).collect(Collectors.toList());
+        .stream().map(entry -> Pair.of(entry.getKey(), entry.getValue())).collect(Collectors.toList());
     List<Pair<String, String>> filesToAppended = partitionToAppendedFilesList.stream().flatMap(e -> e.getRight().keySet().stream().map(f -> Pair.of(e.getLeft(), f))).collect(Collectors.toList());
     parallelism = Math.max(Math.min(filesToAppended.size(), recordsGenerationParams.getRecordLevelIndexParallelism()), 1);
     HoodieData<Pair<String, String>> partitionToAppendedFilesRDD = engineContext.parallelize(filesToAppended, parallelism);
 
-    HoodieData<HoodieRecord> appendedFilesRecordsRDD = partitionToAppendedFilesRDD.filter(p->FSUtils.isBaseFile(new Path(p.getRight()))).flatMap(partitionToDeletedFilePair -> {
-      return getRecordIndexFromParquetFile(engineContext, datasetBasePath, partitionToDeletedFilePair, false);
-    });;
+    HoodieData<HoodieRecord> appendedFilesRecordsRDD = partitionToAppendedFilesRDD.filter(p -> FSUtils.isBaseFile(new Path(p.getRight()))).flatMap(partitionToDeletedFilePair -> {
+      return getRecordIndexFromParquetFile(new Configuration(), datasetBasePath, partitionToDeletedFilePair, false, keyGeneratorOpt);
+    });
+
     allRecordsRDD = allRecordsRDD.union(appendedFilesRecordsRDD);
 
     return allRecordsRDD;
   }
 
   @NotNull
-  private static Iterator<HoodieRecord> getRecordIndexFromParquetFile(HoodieEngineContext engineContext, String datasetBasePath, Pair<String, String> partitionToFilePair, boolean isDeleted) throws IOException {
+  private static Iterator<HoodieRecord> getRecordIndexFromParquetFile(
+      Configuration conf,
+      String datasetBasePath,
+      Pair<String, String> partitionToFilePair,
+      boolean isDeleted,
+      Option<BaseKeyGenerator> keyGeneratorOpt)
+      throws IOException {
     final String partition = getPartitionIdentifier(partitionToFilePair.getLeft());
     final String fileName = partitionToFilePair.getRight();
     final String fileId = FSUtils.getFileId(fileName);
     final String fileCommitTime = FSUtils.getCommitTime(fileName);
 
     Path dataFilePath = new Path(datasetBasePath, String.format("%s%s%s", partition, Path.SEPARATOR, fileName));
-    HoodieFileReader reader = HoodieFileReaderFactory.getFileReader(engineContext.getHadoopConf().get(), dataFilePath);
-    Iterator<String> recordKeyIterator = reader.getRecordIterator(HoodieAvroUtils.getRecordKeySchema());
-    final List<Long> blockRecordSize = ((HoodieParquetReader) reader).getBlockRecordSize();
+
+    HoodieFileReader reader = HoodieFileReaderFactory.getFileReader(conf, dataFilePath);
+
+    BaseFileUtils baseFileUtils = BaseFileUtils.getInstance(dataFilePath.toString());
+    Iterator<HoodieKey> recordKeyIterator;
+    if (keyGeneratorOpt.isPresent()) {
+      recordKeyIterator = baseFileUtils.getHoodieKeyIterator(conf, dataFilePath, keyGeneratorOpt);
+    } else {
+      recordKeyIterator = baseFileUtils.getHoodieKeyIterator(conf, dataFilePath);
+    }
+    final List<Long> blockRecordSize = baseFileUtils.getBlockRecordSize(conf, dataFilePath);
 
     return new Iterator<HoodieRecord>() {
       long size = 0L;
+
       @Override
       public boolean hasNext() {
         return recordKeyIterator.hasNext();
@@ -1029,18 +1052,19 @@ public class HoodieTableMetadataUtil {
       public HoodieRecord next() {
         size++;
         int rowGroupIndex = findRowGroupIndex();
-        return HoodieMetadataPayload.createRecordLevelIndexRecord(recordKeyIterator.next(), partition, fileId, rowGroupIndex, isDeleted, fileCommitTime);
+        HoodieKey next = recordKeyIterator.next();
+        return HoodieMetadataPayload.createRecordLevelIndexRecord(next.getRecordKey(), next.getPartitionPath(), fileId, rowGroupIndex, isDeleted, fileCommitTime, HoodieOperation.INSERT);
       }
 
-      int findRowGroupIndex(){
+      int findRowGroupIndex() {
         long sum = 0;
-        for(int i = 0; i < blockRecordSize.size(); i ++){
+        for (int i = 0; i < blockRecordSize.size(); i++) {
           sum = sum + blockRecordSize.get(i);
-          if(size <= sum){
+          if (size <= sum) {
             return i;
           }
         }
-        throw new HoodieMetadataException("Can not found rowGroup currenSize: "+ size + ",  block total size: "+ sum);
+        throw new HoodieMetadataException("Can not found rowGroup currenSize: " + size + ",  block total size: " + sum);
       }
     };
   }
@@ -1220,8 +1244,8 @@ public class HoodieTableMetadataUtil {
   }
 
   private static Stream<HoodieRecord> translateWriteStatToColumnStats(HoodieWriteStat writeStat,
-                                                                     HoodieTableMetaClient datasetMetaClient,
-                                                                     List<String> columnsToIndex) {
+                                                                      HoodieTableMetaClient datasetMetaClient,
+                                                                      List<String> columnsToIndex) {
     if (writeStat instanceof HoodieDeltaWriteStat && ((HoodieDeltaWriteStat) writeStat).getColumnStats().isPresent()) {
       Map<String, HoodieColumnRangeMetadata<Comparable>> columnRangeMap = ((HoodieDeltaWriteStat) writeStat).getColumnStats().get();
       Collection<HoodieColumnRangeMetadata<Comparable>> columnRangeMetadataList = columnRangeMap.values();
@@ -1365,9 +1389,9 @@ public class HoodieTableMetadataUtil {
   /**
    * Given a schema, coerces provided value to instance of {@link Comparable<?>} such that
    * it could subsequently used in column stats
-   *
+   * <p>
    * NOTE: This method has to stay compatible with the semantic of
-   *      {@link ParquetUtils#readRangeFromParquetMetadata} as they are used in tandem
+   * {@link ParquetUtils#readRangeFromParquetMetadata} as they are used in tandem
    */
   private static Comparable<?> coerceToComparable(Schema schema, Object val) {
     if (val == null) {

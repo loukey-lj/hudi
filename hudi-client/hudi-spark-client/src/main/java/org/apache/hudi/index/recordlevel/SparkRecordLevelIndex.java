@@ -23,6 +23,7 @@ import org.apache.hudi.common.data.HoodieData;
 import org.apache.hudi.common.engine.HoodieEngineContext;
 import org.apache.hudi.common.model.FileSlice;
 import org.apache.hudi.common.model.HoodieKey;
+import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordLocation;
 import org.apache.hudi.common.util.Option;
@@ -105,44 +106,42 @@ public class SparkRecordLevelIndex extends HoodieIndex<Object, Object> {
   }
 
   public HoodieData<HoodieRecord> updateLocationToMetadata(JavaRDD<WriteStatus> writeStatusRDD, HoodieTable hoodieTable) {
-    Integer indexTTL = config.tableIndexTTL();
-    //不是 meta 表或者 liveTime 非法就不清理
-    if (indexTTL <= 0) {
-      indexTTL = -1;
-    }
-    final Integer liveTime = indexTTL;
+    Integer liveTime = config.tableIndexTTL();
+
     long[] counts = {0L, 0L, 0L}; // insert, update, delete
     JavaRDD<HoodieRecord> indexUpdateRDD = writeStatusRDD.flatMap(writeStatus -> {
       List<HoodieRecord> records = new LinkedList<>();
       for (HoodieRecord writtenRecord : writeStatus.getWrittenRecords()) {
         if (!writeStatus.isErrored(writtenRecord.getKey())) {
-          HoodieRecord indexRecord;
+          HoodieRecord indexRecord = null;
           HoodieKey key = writtenRecord.getKey();
           Option<HoodieRecordLocation> newLocation = writtenRecord.getNewLocation();
           final HoodieRecordLocation currentLocation = writtenRecord.getCurrentLocation();
+          HoodieOperation operation = writtenRecord.getOperation();
 
           String partitionPath = key.getPartitionPath();
-          //ttl
+          // ttl
           if (liveTime > 0 && partitionPath != null && isColdData(partitionPath, liveTime)) {
             continue;
           }
 
-          if (newLocation.isPresent()) {
-            if (currentLocation != null) {
-              // Update
-              counts[1] += 1;
-              // TODO: updates are not currently supported but are required for clustering use-case. We should make
-              // sure that if the fileID has changed then we update it.
-              // TODO: How to differentiate dupes here?
-              continue;
-            } else {
-              // Insert
-              counts[0] += 1;
+          if (HoodieOperation.isUpdateBefore(operation) || HoodieOperation.isDelete(operation)) {
+            // Delete
+            counts[2] += 1;
+            // Delete existing index for a deleted record
+            if (!HoodieOperation.isUpdateBefore(operation)) {
+              indexRecord = HoodieMetadataPayload.createRecordLevelIndexRecord(key.getRecordKey(), partitionPath,
+                  currentLocation.getFileId(), currentLocation.getRowGroupId(), true, currentLocation.getInstantTime(), HoodieOperation.UPDATE_BEFORE);
             }
-
-
+          } else if (currentLocation != null || HoodieOperation.isUpdateAfter(operation)) {
+            // Update
+            counts[1] += 1;
+            // Location not change needn't update index
+            continue;
+          } else {
+            // Insert
+            counts[0] += 1;
             HoodieRecordLocation hoodieRecordLocation = newLocation.get();
-
             // Data file names have a -D suffix to denote the index (D = integer) of the file written
             String fileId = hoodieRecordLocation.getFileId();
             final int index = fileId.lastIndexOf("-");
@@ -159,17 +158,12 @@ public class SparkRecordLevelIndex extends HoodieIndex<Object, Object> {
             if (rowGroupId == null) {
               rowGroupId = -1;
             }
-
             indexRecord = HoodieMetadataPayload.createRecordLevelIndexRecord(key.getRecordKey(), partitionPath,
-                fileId, rowGroupId, false, hoodieRecordLocation.getInstantTime());
-          } else {
-            // Delete existing index for a deleted record
-            counts[2] += 1;
-            indexRecord = HoodieMetadataPayload.createRecordLevelIndexRecord(key.getRecordKey(), partitionPath,
-                currentLocation.getFileId(), currentLocation.getRowGroupId(), true, currentLocation.getInstantTime());
+                fileId, rowGroupId, false, hoodieRecordLocation.getInstantTime(), HoodieOperation.INSERT);
           }
-
-          records.add(indexRecord);
+          if (indexRecord != null) {
+            records.add(indexRecord);
+          }
         }
       }
       return records.iterator();

@@ -92,9 +92,4 @@ public class HoodieParquetReader<R extends IndexedRecord> implements HoodieFileR
     return parquetUtils.getRowCount(conf, path);
   }
 
-  public List<Long> getBlockRecordSize() throws IOException {
-    final ParquetMetadata parquetMetadata = ((ParquetUtils) parquetUtils).readMetadata(conf, path);
-    final List<Long> blockRecordSize = parquetMetadata.getBlocks().stream().map(x -> x.getRowCount()).collect(Collectors.toList());
-    return blockRecordSize;
-  }
 }

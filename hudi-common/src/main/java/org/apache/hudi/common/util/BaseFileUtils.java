@@ -211,4 +211,6 @@ public abstract class BaseFileUtils {
    * @return The subclass's {@link HoodieFileFormat}.
    */
   public abstract HoodieFileFormat getFormat();
+
+  public abstract List<Long> getBlockRecordSize(Configuration configuration, Path path);
 }

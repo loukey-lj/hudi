@@ -35,6 +35,7 @@ import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.data.HoodieJavaRDD;
 import org.apache.hudi.exception.HoodieMetadataException;
+import org.apache.hudi.keygen.BaseKeyGenerator;
 import org.apache.hudi.metrics.DistributedRegistry;
 
 import org.apache.avro.specific.SpecificRecordBase;
@@ -76,7 +77,7 @@ public class SparkHoodieBackedTableMetadataWriter extends HoodieBackedTableMetad
                                                                                 Option<T> actionMetadata,
                                                                                 Option<String> inflightInstantTimestamp) {
     return new SparkHoodieBackedTableMetadataWriter(conf, writeConfig, context, actionMetadata,
-                                                    inflightInstantTimestamp);
+        inflightInstantTimestamp);
   }
 
   public static HoodieTableMetadataWriter create(Configuration conf, HoodieWriteConfig writeConfig,
@@ -132,7 +133,7 @@ public class SparkHoodieBackedTableMetadataWriter extends HoodieBackedTableMetad
   protected void commit(String instantTime, Map<MetadataPartitionType, HoodieData<HoodieRecord>> partitionRecordsMap, boolean canTriggerTableService) {
     ValidationUtils.checkState(metadataMetaClient != null, "Metadata table is not fully initialized yet.");
     ValidationUtils.checkState(enabled, "Metadata table cannot be committed to as it is not enabled");
-    if(recordsQueuedForCommit != null && recordsQueuedForCommit.size() > 0){
+    if (recordsQueuedForCommit != null && recordsQueuedForCommit.size() > 0) {
       partitionRecordsMap.putAll(recordsQueuedForCommit);
     }
     HoodieData<HoodieRecord> preppedRecords = prepRecords(partitionRecordsMap);
@@ -168,14 +169,14 @@ public class SparkHoodieBackedTableMetadataWriter extends HoodieBackedTableMetad
         // clean plan is the same, so we don't need to delete the requested and inflight instant
         // files in the active timeline.
       }
-      
+
       List<WriteStatus> statuses = writeClient.upsertPreppedRecords(preppedRecordRDD, instantTime).collect();
       statuses.forEach(writeStatus -> {
         if (writeStatus.hasErrors()) {
           throw new HoodieMetadataException("Failed to commit metadata table records at instant " + instantTime);
         }
       });
-      if(recordsQueuedForCommit != null){
+      if (recordsQueuedForCommit != null) {
         recordsQueuedForCommit.clear();
       }
       // reload timeline
@@ -202,7 +203,12 @@ public class SparkHoodieBackedTableMetadataWriter extends HoodieBackedTableMetad
     }
   }
 
-  public void update(MetadataPartitionType metadataPartitionType, HoodieData<HoodieRecord> hoodieData){
-    recordsQueuedForCommit.put(metadataPartitionType,hoodieData);
-  };
+  public void update(MetadataPartitionType metadataPartitionType, HoodieData<HoodieRecord> hoodieData) {
+    recordsQueuedForCommit.put(metadataPartitionType, hoodieData);
+  }
+
+  public Option<BaseKeyGenerator> getKeyGenerator(HoodieWriteConfig dataWriteConfig) {
+    return org.apache.hudi.index.SparkHoodieIndexFactory.getKeyGeneratorForSimpleIndex(dataWriteConfig);
+  }
+
 }
