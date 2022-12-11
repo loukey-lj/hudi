@@ -155,7 +155,7 @@ public class RecordLeveleIndexTest {
     String time1 = writeHudi(spark, jssc, fs, dataList);
 
     // Delete commit
-    fs.delete(new Path(tablePath + "/.hoodie/" +time1+ ".commit"), true);
+    fs.delete(new Path(tablePath + "/.hoodie/" + time1 + ".commit"), true);
 
     Row[] dvCountRow = (Row[]) spark.sql("select count(1) from mv ").collect();
     GenericRowWithSchema dvCount = (GenericRowWithSchema) dvCountRow[0];
@@ -177,8 +177,8 @@ public class RecordLeveleIndexTest {
     String time1 = writeHudi(spark, jssc, fs, dataList);
 
     // Delete commit
-    fs.delete(new Path(tablePath + "/.hoodie/" +time1+ ".commit"), true);
-    fs.delete(new Path(tablePath + "/.hoodie/metadata/.hoodie/" +time1+ ".deltacommit"), true);
+    fs.delete(new Path(tablePath + "/.hoodie/" + time1 + ".commit"), true);
+    fs.delete(new Path(tablePath + "/.hoodie/metadata/.hoodie/" + time1 + ".deltacommit"), true);
 
     Row[] dvCountRow = (Row[]) spark.sql("select count(1) from mv ").collect();
     GenericRowWithSchema dvCount = (GenericRowWithSchema) dvCountRow[0];
@@ -221,7 +221,8 @@ public class RecordLeveleIndexTest {
 
     spark.sql("drop view if exists  mv");
     spark.sql("create temporary view  mv as " + "select key, " + "recordLevelIndexMetadata['partition'] as partition, " + "recordLevelIndexMetadata['fileId'] as fileId, "
-        + "recordLevelIndexMetadata['isDeleted'] as isDeleted, " + "recordLevelIndexMetadata['commitTime'] as commitTime, " + "recordLevelIndexMetadata['rowGroupIndex'] as rowGroupIndex from meta where type=5");
+        + "recordLevelIndexMetadata['isDeleted'] as isDeleted, " + "recordLevelIndexMetadata['commitTime'] as commitTime, "
+        + "recordLevelIndexMetadata['rowGroupIndex'] as rowGroupIndex from meta where type = 5");
 
     spark.sql("drop view if exists  dv");
     spark.sql("create temporary view  dv as select " + "_hoodie_record_key     as key," + "_hoodie_partition_path as partition, " + "_hoodie_file_name     as fileId,"
